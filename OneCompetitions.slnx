@@ -1,0 +1,21 @@
+<Solution>
+  <Folder Name="/apps/" />
+  <Folder Name="/apps/api/">
+    <Project Path="apps/api/OneCompetitions.Api/OneCompetitions.Api.csproj" />
+    <Project Path="apps/api/OneCompetitions.Application/OneCompetitions.Application.csproj" />
+    <Project Path="apps/api/OneCompetitions.Contracts/OneCompetitions.Contracts.csproj" />
+    <Project Path="apps/api/OneCompetitions.Domain/OneCompetitions.Domain.csproj" />
+    <Project Path="apps/api/OneCompetitions.Infrastructure/OneCompetitions.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/apps/worker/">
+    <Project Path="apps/worker/OneCompetitions.Worker/OneCompetitions.Worker.csproj" />
+  </Folder>
+  <Folder Name="/tests/" />
+  <Folder Name="/tests/api-integration/">
+    <Project Path="tests/api-integration/OneCompetitions.Api.IntegrationTests/OneCompetitions.Api.IntegrationTests.csproj" />
+    <Project Path="tests/api-integration/OneCompetitions.Domain.Tests/OneCompetitions.Domain.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/security/">
+    <Project Path="tests/security/OneCompetitions.Security.Tests/OneCompetitions.Security.Tests.csproj" />
+  </Folder>
+</Solution>

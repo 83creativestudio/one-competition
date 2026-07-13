@@ -1,0 +1,17 @@
+{
+  "name": "one-competitions",
+  "private": true,
+  "workspaces": [
+    "apps/web"
+  ],
+  "scripts": {
+    "test": "npm --workspace apps/web test",
+    "lint": "npm --workspace apps/web run lint",
+    "build": "npm --workspace apps/web run build"
+  },
+  "overrides": {
+    "next": {
+      "postcss": "^8.5.19"
+    }
+  }
+}

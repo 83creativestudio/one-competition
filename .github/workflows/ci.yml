@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "feature/**"]
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+      - run: dotnet restore OneCompetitions.slnx
+      - run: dotnet build OneCompetitions.slnx --no-restore
+      - run: dotnet test OneCompetitions.slnx --no-build
+      - run: npm ci
+      - run: npm test
+      - run: npm run lint
+      - run: npm run build
