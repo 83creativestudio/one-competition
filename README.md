@@ -1,6 +1,6 @@
 # ONE. Competitions
 
-ONE. Competitions is a multi-tenant SaaS platform for competition and giveaway management. The current implementation includes the deployable foundation plus Stage 2 domain and branding capabilities: clean backend architecture, PostgreSQL persistence, Identity-based dashboard authentication, tenant memberships, tenant resolution, authorization policies, audit logging, health checks, tenant domain APIs, development domain verification, brand profiles, public theme resolution, Docker scaffolding, CI, and a minimal Next.js shell.
+ONE. Competitions is a multi-tenant SaaS platform for competition and giveaway management. The current implementation includes the deployable foundation, domain and branding capabilities, and a compact MVP core for standard-draw competitions: competition management, fields, rules, page JSON, public entry submission, duplicate email/phone risk scoring, QR/source tracking, analytics overview, entry review, immutable draw snapshots, cryptographically secure winner/reserve selection, winner workflow, export job records, Docker scaffolding, CI, and a Next.js route shell.
 
 ## Architecture
 
@@ -10,11 +10,19 @@ ONE. Competitions is a multi-tenant SaaS platform for competition and giveaway m
 - `tests`: .NET unit, integration, and security tests.
 - `docs`: architecture and operating documentation.
 
-## Implemented Stage 2 APIs
+## Implemented APIs
 
 - Tenant domains: list, create, verify, set primary, delete.
 - Brand profiles: list, create, get, update, delete.
 - Public theme: subdomain/custom-domain route and platform path route.
+- Competitions: create, update, publish, close, versions.
+- Fields, rules, and page JSON.
+- Public competition lookup and entry submission.
+- Entries: list, approve, reject, duplicate, disqualify.
+- Campaign sources, QR codes, QR redirect, analytics overview.
+- Draws: prepare, approve, execute, results.
+- Winners: contact, accept, disqualify, deliver prize.
+- Exports: create/list export jobs.
 
 ## Prerequisites
 
@@ -38,7 +46,11 @@ Required variables are documented in `.env.example`. Production must provide `JW
 
 ## Database Migrations
 
-The initial migration is `InitialFoundation` in `apps/api/OneCompetitions.Infrastructure/Persistence/Migrations`.
+Migrations are in `apps/api/OneCompetitions.Infrastructure/Persistence/Migrations`:
+
+- `InitialFoundation`
+- `AddDomainsAndBranding`
+- `AddCompetitionMvpCore`
 
 Generate future migrations with the repo-local EF tool:
 

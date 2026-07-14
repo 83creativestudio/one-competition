@@ -5,8 +5,14 @@ using Microsoft.Extensions.DependencyInjection;
 using OneCompetitions.Application.Auditing;
 using OneCompetitions.Application.Auth;
 using OneCompetitions.Application.Branding;
+using OneCompetitions.Application.Campaigns;
+using OneCompetitions.Application.Competitions;
 using OneCompetitions.Application.Domains;
+using OneCompetitions.Application.Draws;
+using OneCompetitions.Application.Entries;
+using OneCompetitions.Application.Exports;
 using OneCompetitions.Application.Tenants;
+using OneCompetitions.Application.Winners;
 using OneCompetitions.Infrastructure.Identity;
 using OneCompetitions.Infrastructure.Persistence;
 using OneCompetitions.Infrastructure.Services;
@@ -58,6 +64,12 @@ public static class DependencyInjection
         services.AddScoped<IDomainVerificationProvider, DevelopmentDomainVerificationProvider>();
         services.AddScoped<ISslProvisioningProvider, UnavailableSslProvisioningProvider>();
         services.AddScoped<IBrandProfileService, BrandProfileService>();
+        services.AddScoped<ICompetitionService, CompetitionService>();
+        services.AddScoped<IEntryService, EntryService>();
+        services.AddScoped<ICampaignService, CampaignService>();
+        services.AddScoped<IDrawService, DrawService>();
+        services.AddScoped<IWinnerService, WinnerService>();
+        services.AddScoped<IExportService, ExportService>();
         services.AddScoped<IAuditLogger, AuditLogger>();
 
         return services;

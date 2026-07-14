@@ -4,7 +4,14 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using OneCompetitions.Application.Auth;
+using OneCompetitions.Domain.Billing;
 using OneCompetitions.Domain.Branding;
+using OneCompetitions.Domain.Campaigns;
+using OneCompetitions.Domain.Competitions;
+using OneCompetitions.Domain.Consents;
+using OneCompetitions.Domain.Entries;
+using OneCompetitions.Domain.Features;
+using OneCompetitions.Domain.Participants;
 using OneCompetitions.Domain.Tenants;
 using OneCompetitions.Infrastructure.Identity;
 
@@ -71,6 +78,11 @@ public static class DevelopmentSeeder
         await EnsureBrandProfileAsync(dbContext, omegaTv.Id, "Omega TV", "#1d4ed8", "#111827", "#dc2626", cancellationToken);
         await EnsureBrandProfileAsync(dbContext, restaurant.Id, "Demo Restaurant", "#166534", "#292524", "#ca8a04", cancellationToken);
         await EnsureBrandProfileAsync(dbContext, retail.Id, "Demo Retail Brand", "#7c3aed", "#111827", "#db2777", cancellationToken);
+        await EnsurePlansAndFlagsAsync(dbContext, cancellationToken);
+        await EnsureCompetitionSeedAsync(dbContext, oneDigital.Id, admin.Id, "Win an iPhone", "win-an-iphone", cancellationToken);
+        await EnsureCompetitionSeedAsync(dbContext, omegaTv.Id, admin.Id, "Live TV Prize Draw", "live-tv-prize-draw", cancellationToken);
+        await EnsureCompetitionSeedAsync(dbContext, restaurant.Id, admin.Id, "Summer Restaurant Giveaway", "summer-restaurant-giveaway", cancellationToken);
+        await EnsureCompetitionSeedAsync(dbContext, retail.Id, admin.Id, "Shopping Voucher Competition", "shopping-voucher-competition", cancellationToken);
 
         if (!await dbContext.TenantUsers.IgnoreQueryFilters().AnyAsync(x => x.TenantId == oneDigital.Id && x.UserId == admin.Id, cancellationToken))
         {
@@ -155,5 +167,171 @@ public static class DevelopmentSeeder
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow
         });
+    }
+
+    private static async Task EnsurePlansAndFlagsAsync(AppDbContext dbContext, CancellationToken cancellationToken)
+    {
+        if (!await dbContext.Plans.AnyAsync(x => x.Code == "starter", cancellationToken))
+        {
+            dbContext.Plans.Add(new Plan
+            {
+                Id = Guid.NewGuid(),
+                Name = "Starter",
+                Code = "starter",
+                MonthlyPrice = 49,
+                AnnualPrice = 490,
+                FeatureConfigurationJson = "{\"MaximumActiveCompetitions\":3,\"AllowCustomDomain\":true,\"AllowExports\":true}",
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow
+            });
+        }
+
+        foreach (var code in new[] { "CustomDomains", "SocialLogin", "Referrals", "ReceiptUploads", "InstantWin", "TvMode", "DrawCertificates", "AdvancedFraud", "PublicDirectory", "ResellerMode" })
+        {
+            if (!await dbContext.FeatureFlags.AnyAsync(x => x.Code == code, cancellationToken))
+            {
+                dbContext.FeatureFlags.Add(new FeatureFlag
+                {
+                    Id = Guid.NewGuid(),
+                    Code = code,
+                    Name = code,
+                    IsEnabled = code is "CustomDomains" or "DrawCertificates" or "AdvancedFraud",
+                    CreatedAt = DateTimeOffset.UtcNow,
+                    UpdatedAt = DateTimeOffset.UtcNow
+                });
+            }
+        }
+    }
+
+    private static async Task EnsureCompetitionSeedAsync(AppDbContext dbContext, Guid tenantId, Guid adminUserId, string name, string slug, CancellationToken cancellationToken)
+    {
+        if (await dbContext.Competitions.IgnoreQueryFilters().AnyAsync(x => x.TenantId == tenantId && x.Slug == slug, cancellationToken))
+        {
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var competition = new Competition
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            Name = name,
+            Slug = slug,
+            Description = "Development seed competition",
+            Status = CompetitionStatus.Live,
+            StartsAt = now.AddDays(-1),
+            EndsAt = now.AddDays(14),
+            NumberOfWinners = 1,
+            NumberOfReserveWinners = 1,
+            RequiresManualApproval = true,
+            PublishedByUserId = adminUserId,
+            PublishedAt = now,
+            CreatedByUserId = adminUserId,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        dbContext.Competitions.Add(competition);
+
+        dbContext.CompetitionFields.AddRange(
+            new CompetitionField { Id = Guid.NewGuid(), CompetitionId = competition.Id, FieldKey = "email", FieldType = CompetitionFieldType.Email, Label = "Email", IsRequired = true, DisplayOrder = 1, CreatedAt = now, UpdatedAt = now },
+            new CompetitionField { Id = Guid.NewGuid(), CompetitionId = competition.Id, FieldKey = "phone", FieldType = CompetitionFieldType.Phone, Label = "Phone", IsRequired = false, DisplayOrder = 2, CreatedAt = now, UpdatedAt = now });
+
+        dbContext.CompetitionRulesVersions.Add(new CompetitionRulesVersion
+        {
+            Id = Guid.NewGuid(),
+            CompetitionId = competition.Id,
+            VersionNumber = 1,
+            LanguageCode = "en",
+            Title = $"{name} rules",
+            Content = "Development-only rules for local testing.",
+            ContentHash = "development-seed",
+            EffectiveAt = now,
+            CreatedByUserId = adminUserId,
+            CreatedAt = now
+        });
+
+        dbContext.CompetitionPages.Add(new CompetitionPage
+        {
+            Id = Guid.NewGuid(),
+            CompetitionId = competition.Id,
+            LanguageCode = "en",
+            Status = "Published",
+            Title = name,
+            SeoTitle = name,
+            SeoDescription = "Enter the competition",
+            LayoutJson = "{\"schemaVersion\":1,\"blocks\":[{\"id\":\"hero-1\",\"type\":\"hero\",\"settings\":{\"headline\":\"Enter now\"}},{\"id\":\"entry-1\",\"type\":\"EntryForm\",\"settings\":{}}]}",
+            PublishedVersion = 1,
+            CreatedAt = now,
+            UpdatedAt = now,
+            PublishedAt = now
+        });
+
+        var terms = new ConsentDefinition
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            CompetitionId = competition.Id,
+            ConsentType = ConsentType.CompetitionTerms,
+            LanguageCode = "en",
+            Text = "I accept the competition terms.",
+            IsRequired = true,
+            CreatedAt = now
+        };
+        var marketing = new ConsentDefinition
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            CompetitionId = competition.Id,
+            ConsentType = ConsentType.MarketingEmail,
+            LanguageCode = "en",
+            Text = "I agree to receive marketing email.",
+            IsRequired = false,
+            CreatedAt = now
+        };
+        dbContext.ConsentDefinitions.AddRange(terms, marketing);
+
+        var source = new CampaignSource
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            CompetitionId = competition.Id,
+            Name = "Website",
+            SourceType = CampaignSourceType.Website,
+            Code = "WEB",
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        dbContext.CampaignSources.Add(source);
+
+        for (var i = 1; i <= 3; i++)
+        {
+            var participant = new Participant
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantId,
+                PrimaryEmail = $"participant{i}@example.local",
+                FirstName = "Demo",
+                LastName = $"Participant {i}",
+                CreatedAt = now,
+                UpdatedAt = now
+            };
+            dbContext.Participants.Add(participant);
+            dbContext.CompetitionEntries.Add(new CompetitionEntry
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantId,
+                CompetitionId = competition.Id,
+                ParticipantId = participant.Id,
+                EntryReference = $"ENT-{now:yyyy}-{i:000000}",
+                Status = CompetitionEntryStatus.Approved,
+                EligibilityStatus = EligibilityStatus.Eligible,
+                RiskLevel = RiskLevel.Low,
+                EntrySourceId = source.Id,
+                SubmittedAt = now.AddMinutes(i),
+                ApprovedAt = now.AddMinutes(i + 1),
+                CreatedAt = now,
+                UpdatedAt = now
+            });
+        }
     }
 }
