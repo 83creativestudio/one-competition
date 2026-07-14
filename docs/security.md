@@ -12,6 +12,9 @@ Stage 1 security controls:
 - Secure headers including CSP, frame denial, and nosniff.
 - Append-only audit event protection.
 - Cross-tenant integration and security tests.
+- Dashboard custom-domain creation restricted to tenant owners, tenant administrators, or platform administrators.
+- Custom CSS rejection for scripts, `javascript:` URLs, and executable CSS expressions.
+- Development domain verification provider guarded against production use.
 
 Never log passwords, OAuth secrets, complete verification codes, payment data, or unmasked participant personal data.
 

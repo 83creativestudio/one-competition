@@ -12,4 +12,6 @@ Stage 1 uses Clean Architecture for the backend:
 
 Dependencies flow inward. Controllers call application interfaces and do not query EF directly.
 
+Stage 2 adds tenant domain management, development domain verification, brand profiles, and public theme resolution.
+
 Competitions, entries, QR codes, fraud, draw execution, winners, billing, webhooks, and storage are intentionally deferred until their stages.

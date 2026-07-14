@@ -1,6 +1,6 @@
 # ONE. Competitions
 
-ONE. Competitions is a multi-tenant SaaS platform for competition and giveaway management. Stage 1 implements the deployable foundation only: clean backend architecture, PostgreSQL persistence, Identity-based dashboard authentication, tenant memberships, tenant resolution, authorization policies, audit logging, health checks, Docker scaffolding, CI, and a minimal Next.js shell.
+ONE. Competitions is a multi-tenant SaaS platform for competition and giveaway management. The current implementation includes the deployable foundation plus Stage 2 domain and branding capabilities: clean backend architecture, PostgreSQL persistence, Identity-based dashboard authentication, tenant memberships, tenant resolution, authorization policies, audit logging, health checks, tenant domain APIs, development domain verification, brand profiles, public theme resolution, Docker scaffolding, CI, and a minimal Next.js shell.
 
 ## Architecture
 
@@ -9,6 +9,12 @@ ONE. Competitions is a multi-tenant SaaS platform for competition and giveaway m
 - `apps/web`: Next.js App Router frontend shell.
 - `tests`: .NET unit, integration, and security tests.
 - `docs`: architecture and operating documentation.
+
+## Implemented Stage 2 APIs
+
+- Tenant domains: list, create, verify, set primary, delete.
+- Brand profiles: list, create, get, update, delete.
+- Public theme: subdomain/custom-domain route and platform path route.
 
 ## Prerequisites
 

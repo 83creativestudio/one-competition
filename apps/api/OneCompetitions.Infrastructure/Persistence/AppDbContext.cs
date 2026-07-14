@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using OneCompetitions.Application.Tenants;
 using OneCompetitions.Domain.Auditing;
+using OneCompetitions.Domain.Branding;
 using OneCompetitions.Domain.Tenants;
 using OneCompetitions.Infrastructure.Identity;
 
@@ -16,6 +17,7 @@ public sealed class AppDbContext(
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<TenantUser> TenantUsers => Set<TenantUser>();
     public DbSet<TenantDomain> TenantDomains => Set<TenantDomain>();
+    public DbSet<BrandProfile> BrandProfiles => Set<BrandProfile>();
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
     public DbSet<UserSession> UserSessions => Set<UserSession>();
 
@@ -49,6 +51,25 @@ public sealed class AppDbContext(
             entity.Property(x => x.DomainType).HasConversion<string>().HasMaxLength(60);
             entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(60);
             entity.HasOne(x => x.Tenant).WithMany(x => x.Domains).HasForeignKey(x => x.TenantId);
+            entity.HasQueryFilter(x => x.DeletedAt == null && (!tenantContext.IsResolved || x.TenantId == tenantContext.TenantId));
+        });
+
+        builder.Entity<BrandProfile>(entity =>
+        {
+            entity.HasIndex(x => new { x.TenantId, x.Name }).IsUnique();
+            entity.Property(x => x.Name).HasMaxLength(160);
+            entity.Property(x => x.PrimaryColor).HasMaxLength(20);
+            entity.Property(x => x.SecondaryColor).HasMaxLength(20);
+            entity.Property(x => x.AccentColor).HasMaxLength(20);
+            entity.Property(x => x.BackgroundColor).HasMaxLength(20);
+            entity.Property(x => x.TextColor).HasMaxLength(20);
+            entity.Property(x => x.HeadingFont).HasMaxLength(120);
+            entity.Property(x => x.BodyFont).HasMaxLength(120);
+            entity.Property(x => x.ButtonStyle).HasMaxLength(40);
+            entity.Property(x => x.FooterText).HasMaxLength(1000);
+            entity.Property(x => x.SupportEmail).HasMaxLength(320);
+            entity.Property(x => x.SupportPhone).HasMaxLength(80);
+            entity.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId);
             entity.HasQueryFilter(x => x.DeletedAt == null && (!tenantContext.IsResolved || x.TenantId == tenantContext.TenantId));
         });
 

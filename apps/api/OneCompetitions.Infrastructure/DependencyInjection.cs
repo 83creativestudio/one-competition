@@ -4,6 +4,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using OneCompetitions.Application.Auditing;
 using OneCompetitions.Application.Auth;
+using OneCompetitions.Application.Branding;
+using OneCompetitions.Application.Domains;
 using OneCompetitions.Application.Tenants;
 using OneCompetitions.Infrastructure.Identity;
 using OneCompetitions.Infrastructure.Persistence;
@@ -52,6 +54,10 @@ public static class DependencyInjection
 
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<ITenantAccessService, TenantAccessService>();
+        services.AddScoped<ITenantDomainService, TenantDomainService>();
+        services.AddScoped<IDomainVerificationProvider, DevelopmentDomainVerificationProvider>();
+        services.AddScoped<ISslProvisioningProvider, UnavailableSslProvisioningProvider>();
+        services.AddScoped<IBrandProfileService, BrandProfileService>();
         services.AddScoped<IAuditLogger, AuditLogger>();
 
         return services;

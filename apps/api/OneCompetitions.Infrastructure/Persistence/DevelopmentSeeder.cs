@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using OneCompetitions.Application.Auth;
+using OneCompetitions.Domain.Branding;
 using OneCompetitions.Domain.Tenants;
 using OneCompetitions.Infrastructure.Identity;
 
@@ -63,9 +64,13 @@ public static class DevelopmentSeeder
         }
 
         var oneDigital = await EnsureTenantAsync(dbContext, "ONE. Digital", "one-digital", cancellationToken);
-        await EnsureTenantAsync(dbContext, "Omega TV", "omega-tv", cancellationToken);
-        await EnsureTenantAsync(dbContext, "Demo Restaurant", "demo-restaurant", cancellationToken);
-        await EnsureTenantAsync(dbContext, "Demo Retail Brand", "demo-retail-brand", cancellationToken);
+        var omegaTv = await EnsureTenantAsync(dbContext, "Omega TV", "omega-tv", cancellationToken);
+        var restaurant = await EnsureTenantAsync(dbContext, "Demo Restaurant", "demo-restaurant", cancellationToken);
+        var retail = await EnsureTenantAsync(dbContext, "Demo Retail Brand", "demo-retail-brand", cancellationToken);
+        await EnsureBrandProfileAsync(dbContext, oneDigital.Id, "ONE. Digital", "#0f766e", "#111827", "#c2410c", cancellationToken);
+        await EnsureBrandProfileAsync(dbContext, omegaTv.Id, "Omega TV", "#1d4ed8", "#111827", "#dc2626", cancellationToken);
+        await EnsureBrandProfileAsync(dbContext, restaurant.Id, "Demo Restaurant", "#166534", "#292524", "#ca8a04", cancellationToken);
+        await EnsureBrandProfileAsync(dbContext, retail.Id, "Demo Retail Brand", "#7c3aed", "#111827", "#db2777", cancellationToken);
 
         if (!await dbContext.TenantUsers.IgnoreQueryFilters().AnyAsync(x => x.TenantId == oneDigital.Id && x.UserId == admin.Id, cancellationToken))
         {
@@ -122,5 +127,33 @@ public static class DevelopmentSeeder
         });
 
         return tenant;
+    }
+
+    private static async Task EnsureBrandProfileAsync(AppDbContext dbContext, Guid tenantId, string name, string primaryColor, string secondaryColor, string accentColor, CancellationToken cancellationToken)
+    {
+        if (await dbContext.BrandProfiles.IgnoreQueryFilters().AnyAsync(x => x.TenantId == tenantId && x.Name == name, cancellationToken))
+        {
+            return;
+        }
+
+        dbContext.BrandProfiles.Add(new BrandProfile
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            Name = name,
+            PrimaryColor = primaryColor,
+            SecondaryColor = secondaryColor,
+            AccentColor = accentColor,
+            BackgroundColor = "#ffffff",
+            TextColor = "#111827",
+            HeadingFont = "Inter",
+            BodyFont = "Inter",
+            ButtonStyle = "Solid",
+            BorderRadius = 6,
+            FooterText = $"{name} competitions",
+            ShowPoweredBy = true,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        });
     }
 }

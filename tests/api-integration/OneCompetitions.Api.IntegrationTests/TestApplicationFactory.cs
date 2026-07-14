@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using OneCompetitions.Application.Auth;
+using OneCompetitions.Domain.Branding;
 using OneCompetitions.Domain.Tenants;
 using OneCompetitions.Infrastructure.Identity;
 using OneCompetitions.Infrastructure.Persistence;
@@ -52,9 +53,11 @@ public sealed class TestApplicationFactory : WebApplicationFactory<Program>
         var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
         var one = await EnsureTenantAsync(db, "ONE. Digital", "one-digital");
         var omega = await EnsureTenantAsync(db, "Omega TV", "omega-tv");
+        await EnsureBrandAsync(db, one.Id, "ONE. Digital");
+        await EnsureBrandAsync(db, omega.Id, "Omega TV");
 
         await EnsureUserAsync(userManager, db, "admin@onecompetitions.local", true, one.Id, true);
-        await EnsureUserAsync(userManager, db, "owner@one.local", false, one.Id, false);
+        await EnsureUserAsync(userManager, db, "owner@one.local", false, one.Id, true);
         await EnsureUserAsync(userManager, db, "owner@omega.local", false, omega.Id, false);
 
         await db.SaveChangesAsync();
@@ -145,5 +148,33 @@ public sealed class TestApplicationFactory : WebApplicationFactory<Program>
                 UpdatedAt = DateTimeOffset.UtcNow
             });
         }
+    }
+
+    private static async Task EnsureBrandAsync(AppDbContext db, Guid tenantId, string name)
+    {
+        if (await db.BrandProfiles.IgnoreQueryFilters().AnyAsync(x => x.TenantId == tenantId && x.Name == name))
+        {
+            return;
+        }
+
+        db.BrandProfiles.Add(new BrandProfile
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            Name = name,
+            PrimaryColor = "#0f766e",
+            SecondaryColor = "#111827",
+            AccentColor = "#c2410c",
+            BackgroundColor = "#ffffff",
+            TextColor = "#111827",
+            HeadingFont = "Inter",
+            BodyFont = "Inter",
+            ButtonStyle = "Solid",
+            BorderRadius = 6,
+            FooterText = $"{name} competitions",
+            ShowPoweredBy = true,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        });
     }
 }

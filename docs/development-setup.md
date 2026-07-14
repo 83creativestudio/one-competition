@@ -10,3 +10,5 @@
 8. Run the web app with `npm --workspace apps/web run dev`.
 
 Development seed data creates a platform administrator and sample tenants. Do not use development fallback secrets in production.
+
+The development domain verification provider verifies `.test`, `.local`, or hostnames containing `verified`. This is for local and automated testing only.

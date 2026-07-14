@@ -24,10 +24,10 @@ public sealed class TenantResolutionMiddleware(RequestDelegate next)
         var hostname = context.Request.Host.Host.ToLowerInvariant();
         var baseDomain = (configuration["PLATFORM_BASE_DOMAIN"] ?? "competitions.local").ToLowerInvariant();
 
-        var tenant = await ResolveFromPathAsync(context, dbContext)
+        var tenant = await ResolveFromCustomDomainAsync(hostname, dbContext)
             ?? await ResolveFromPlatformSubdomainAsync(hostname, baseDomain, dbContext)
             ?? await ResolveFromAuthenticatedUserAsync(context, dbContext)
-            ?? await ResolveFromCustomDomainAsync(hostname, dbContext);
+            ?? await ResolveFromPathAsync(context, dbContext);
 
         if (tenant is null)
         {
