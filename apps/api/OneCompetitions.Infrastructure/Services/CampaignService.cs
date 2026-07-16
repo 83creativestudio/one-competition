@@ -61,6 +61,8 @@ public sealed class CampaignService(
     public async Task<IReadOnlyList<QrCodeResponse>> ListQrCodesAsync(Guid userId, Guid competitionId, CancellationToken cancellationToken)
     {
         await EnsureTenantMemberAsync(userId, cancellationToken);
+        if (DbContext.Database.IsSqlite())
+            return (await DbContext.QrCodes.Where(x => x.CompetitionId == competitionId).Take(500).ToListAsync(cancellationToken)).OrderByDescending(x => x.CreatedAt).Select(ToResponse).ToList();
         return await DbContext.QrCodes.Where(x => x.CompetitionId == competitionId).OrderByDescending(x => x.CreatedAt).Select(x => ToResponse(x)).ToListAsync(cancellationToken);
     }
 

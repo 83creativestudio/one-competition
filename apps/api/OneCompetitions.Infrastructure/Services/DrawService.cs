@@ -4,7 +4,9 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using OneCompetitions.Application.Auditing;
 using OneCompetitions.Application.Draws;
+using OneCompetitions.Application.Locking;
 using OneCompetitions.Application.Tenants;
+using OneCompetitions.Application.Webhooks;
 using OneCompetitions.Contracts.Draws;
 using OneCompetitions.Domain.Competitions;
 using OneCompetitions.Domain.Draws;
@@ -19,12 +21,16 @@ public sealed class DrawService(
     AppDbContext dbContext,
     ITenantContext tenantContext,
     UserManager<ApplicationUser> userManager,
-    IAuditLogger auditLogger)
+    IAuditLogger auditLogger,
+    IDistributedLockProvider distributedLocks,
+    IWebhookService webhooks)
     : TenantScopedServiceBase(dbContext, tenantContext, userManager), IDrawService
 {
     public async Task<IReadOnlyList<DrawResponse>> ListAsync(Guid userId, Guid competitionId, CancellationToken cancellationToken)
     {
         await EnsureTenantMemberAsync(userId, cancellationToken);
+        if (DbContext.Database.IsSqlite())
+            return (await DbContext.Draws.Where(x => x.CompetitionId == competitionId).Take(100).ToListAsync(cancellationToken)).OrderByDescending(x => x.CreatedAt).Select(ToResponse).ToList();
         return await DbContext.Draws.Where(x => x.CompetitionId == competitionId).OrderByDescending(x => x.CreatedAt).Select(x => ToResponse(x)).ToListAsync(cancellationToken);
     }
 
@@ -112,6 +118,11 @@ public sealed class DrawService(
     public async Task<DrawResponse> ExecuteAsync(Guid userId, Guid competitionId, Guid drawId, CancellationToken cancellationToken)
     {
         await EnsureTenantManagerAsync(userId, cancellationToken);
+        await using var drawLock = await distributedLocks.TryAcquireAsync($"draw:{drawId:N}", TimeSpan.FromMinutes(2), cancellationToken);
+        if (drawLock is null)
+        {
+            throw new InvalidOperationException("Draw execution is already in progress.");
+        }
         await using var transaction = await DbContext.Database.BeginTransactionAsync(cancellationToken);
         var draw = await DbContext.Draws.SingleOrDefaultAsync(x => x.Id == drawId && x.CompetitionId == competitionId, cancellationToken)
             ?? throw new InvalidOperationException("Draw was not found.");
@@ -174,6 +185,7 @@ public sealed class DrawService(
         await DbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         await auditLogger.RecordAsync(new AuditRecord(TenantContext.TenantId, userId, "User", "draw.executed", "Draw", draw.Id.ToString(), $"competition:{competitionId}", Guid.NewGuid().ToString("N")), cancellationToken);
+        await webhooks.QueueEventAsync(TenantContext.TenantId, "draw.completed", new { draw.Id, draw.DrawReference, draw.CompetitionId, draw.ExecutedAt }, cancellationToken);
         return ToResponse(draw);
     }
 

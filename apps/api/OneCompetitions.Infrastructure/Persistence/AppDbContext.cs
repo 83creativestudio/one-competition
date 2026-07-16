@@ -15,6 +15,7 @@ using OneCompetitions.Domain.Entries;
 using OneCompetitions.Domain.Exports;
 using OneCompetitions.Domain.Features;
 using OneCompetitions.Domain.Fraud;
+using OneCompetitions.Domain.Notifications;
 using OneCompetitions.Domain.Participants;
 using OneCompetitions.Domain.Privacy;
 using OneCompetitions.Domain.Qr;
@@ -55,6 +56,7 @@ public sealed class AppDbContext(
     public DbSet<Draw> Draws => Set<Draw>();
     public DbSet<DrawEntrySnapshot> DrawEntrySnapshots => Set<DrawEntrySnapshot>();
     public DbSet<DrawResult> DrawResults => Set<DrawResult>();
+    public DbSet<DrawCertificate> DrawCertificates => Set<DrawCertificate>();
     public DbSet<WinnerClaim> WinnerClaims => Set<WinnerClaim>();
     public DbSet<WinnerContactAttempt> WinnerContactAttempts => Set<WinnerContactAttempt>();
     public DbSet<ExportJob> ExportJobs => Set<ExportJob>();
@@ -67,6 +69,7 @@ public sealed class AppDbContext(
     public DbSet<WebhookEndpoint> WebhookEndpoints => Set<WebhookEndpoint>();
     public DbSet<WebhookEvent> WebhookEvents => Set<WebhookEvent>();
     public DbSet<WebhookDelivery> WebhookDeliveries => Set<WebhookDelivery>();
+    public DbSet<NotificationMessage> NotificationMessages => Set<NotificationMessage>();
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
     public DbSet<UserSession> UserSessions => Set<UserSession>();
 
@@ -300,6 +303,16 @@ public sealed class AppDbContext(
             entity.HasOne(x => x.Draw).WithMany().HasForeignKey(x => x.DrawId);
         });
 
+        builder.Entity<DrawCertificate>(entity =>
+        {
+            entity.HasIndex(x => x.DrawId).IsUnique();
+            entity.Property(x => x.Status).HasMaxLength(40);
+            entity.Property(x => x.StorageKey).HasMaxLength(500);
+            entity.Property(x => x.Sha256Hash).HasMaxLength(128);
+            entity.HasOne(x => x.Draw).WithMany().HasForeignKey(x => x.DrawId);
+            entity.HasQueryFilter(x => !tenantContext.IsResolved || x.TenantId == tenantContext.TenantId);
+        });
+
         builder.Entity<WinnerClaim>(entity =>
         {
             entity.HasIndex(x => x.DrawResultId).IsUnique();
@@ -368,6 +381,7 @@ public sealed class AppDbContext(
             entity.HasIndex(x => new { x.TenantId, x.Url }).IsUnique();
             entity.Property(x => x.Url).HasMaxLength(500);
             entity.Property(x => x.SecretHash).HasMaxLength(128);
+            entity.Property(x => x.SecretCiphertext).HasMaxLength(1000);
             entity.HasQueryFilter(x => !tenantContext.IsResolved || x.TenantId == tenantContext.TenantId);
         });
 
@@ -382,6 +396,19 @@ public sealed class AppDbContext(
         {
             entity.HasIndex(x => new { x.WebhookEventId, x.WebhookEndpointId });
             entity.Property(x => x.Status).HasMaxLength(40);
+        });
+
+        builder.Entity<NotificationMessage>(entity =>
+        {
+            entity.HasIndex(x => new { x.Status, x.AvailableAt });
+            entity.HasIndex(x => new { x.TenantId, x.CreatedAt });
+            entity.HasIndex(x => new { x.TenantId, x.DeduplicationKey });
+            entity.Property(x => x.Channel).HasMaxLength(20);
+            entity.Property(x => x.Recipient).HasMaxLength(320);
+            entity.Property(x => x.Subject).HasMaxLength(500);
+            entity.Property(x => x.Status).HasMaxLength(40);
+            entity.Property(x => x.DeduplicationKey).HasMaxLength(180);
+            entity.HasQueryFilter(x => !tenantContext.IsResolved || x.TenantId == tenantContext.TenantId);
         });
 
         builder.Entity<AuditEvent>(entity =>

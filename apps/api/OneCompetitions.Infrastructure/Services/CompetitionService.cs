@@ -4,6 +4,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using OneCompetitions.Application.Auditing;
+using OneCompetitions.Application.Billing;
 using OneCompetitions.Application.Competitions;
 using OneCompetitions.Application.Tenants;
 using OneCompetitions.Contracts.Competitions;
@@ -18,18 +19,22 @@ public sealed class CompetitionService(
     AppDbContext dbContext,
     ITenantContext tenantContext,
     UserManager<ApplicationUser> userManager,
-    IAuditLogger auditLogger)
+    IAuditLogger auditLogger,
+    IPlanLimitService planLimits)
     : TenantScopedServiceBase(dbContext, tenantContext, userManager), ICompetitionService
 {
     public async Task<IReadOnlyList<CompetitionResponse>> ListAsync(Guid userId, CancellationToken cancellationToken)
     {
         await EnsureTenantMemberAsync(userId, cancellationToken);
-        return await DbContext.Competitions.OrderByDescending(x => x.CreatedAt).Select(x => ToResponse(x)).ToListAsync(cancellationToken);
+        if (DbContext.Database.IsSqlite())
+            return (await DbContext.Competitions.Take(500).ToListAsync(cancellationToken)).OrderByDescending(x => x.CreatedAt).Select(ToResponse).ToList();
+        return await DbContext.Competitions.OrderByDescending(x => x.CreatedAt).Take(500).Select(x => ToResponse(x)).ToListAsync(cancellationToken);
     }
 
     public async Task<CompetitionResponse> CreateAsync(Guid userId, CreateCompetitionRequest request, CancellationToken cancellationToken)
     {
         await EnsureTenantManagerAsync(userId, cancellationToken);
+        await planLimits.EnsureAllowedAsync(TenantContext.TenantId, "MaximumActiveCompetitions", 1, cancellationToken);
         ValidateCompetition(request.Name, request.Slug, request.StartsAt, request.EndsAt, request.PerParticipantEntryLimit, request.NumberOfWinners);
 
         var now = DateTimeOffset.UtcNow;

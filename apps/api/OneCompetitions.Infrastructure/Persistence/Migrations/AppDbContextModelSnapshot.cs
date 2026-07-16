@@ -1106,6 +1106,48 @@ namespace OneCompetitions.Infrastructure.Persistence.Migrations
                     b.ToTable("Draws");
                 });
 
+            modelBuilder.Entity("OneCompetitions.Domain.Draws.DrawCertificate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("DrawId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("FailureReason")
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset?>("GeneratedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Sha256Hash")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("StorageKey")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DrawId")
+                        .IsUnique();
+
+                    b.ToTable("DrawCertificates");
+                });
+
             modelBuilder.Entity("OneCompetitions.Domain.Draws.DrawEntrySnapshot", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1323,6 +1365,9 @@ namespace OneCompetitions.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("integer");
+
                     b.Property<Guid?>("CompetitionId")
                         .HasColumnType("uuid");
 
@@ -1347,6 +1392,9 @@ namespace OneCompetitions.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)");
+
+                    b.Property<DateTimeOffset?>("LockedUntil")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("RequestedByUserId")
                         .HasColumnType("uuid");
@@ -1553,6 +1601,77 @@ namespace OneCompetitions.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "RuleType");
 
                     b.ToTable("FraudRules");
+                });
+
+            modelBuilder.Entity("OneCompetitions.Domain.Notifications.NotificationMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("AvailableAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("BodyHtml")
+                        .HasColumnType("text");
+
+                    b.Property<string>("BodyText")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid?>("CompetitionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DeduplicationKey")
+                        .HasMaxLength(180)
+                        .HasColumnType("character varying(180)");
+
+                    b.Property<string>("LastError")
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset?>("LockedUntil")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Recipient")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)");
+
+                    b.Property<DateTimeOffset?>("SentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("Subject")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Status", "AvailableAt");
+
+                    b.HasIndex("TenantId", "CreatedAt");
+
+                    b.HasIndex("TenantId", "DeduplicationKey");
+
+                    b.ToTable("NotificationMessages");
                 });
 
             modelBuilder.Entity("OneCompetitions.Domain.Participants.Participant", b =>
@@ -2017,6 +2136,15 @@ namespace OneCompetitions.Infrastructure.Persistence.Migrations
                     b.Property<int?>("LastStatusCode")
                         .HasColumnType("integer");
 
+                    b.Property<DateTimeOffset?>("LockedUntil")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("NextAttemptAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ResponseBodyPreview")
+                        .HasColumnType("text");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(40)
@@ -2041,6 +2169,9 @@ namespace OneCompetitions.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<int>("ConsecutiveFailureCount")
+                        .HasColumnType("integer");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -2050,6 +2181,11 @@ namespace OneCompetitions.Infrastructure.Persistence.Migrations
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
+
+                    b.Property<string>("SecretCiphertext")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
 
                     b.Property<string>("SecretHash")
                         .IsRequired()
@@ -2428,6 +2564,17 @@ namespace OneCompetitions.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Competition");
+                });
+
+            modelBuilder.Entity("OneCompetitions.Domain.Draws.DrawCertificate", b =>
+                {
+                    b.HasOne("OneCompetitions.Domain.Draws.Draw", "Draw")
+                        .WithMany()
+                        .HasForeignKey("DrawId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Draw");
                 });
 
             modelBuilder.Entity("OneCompetitions.Domain.Draws.DrawEntrySnapshot", b =>

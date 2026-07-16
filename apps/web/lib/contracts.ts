@@ -1,0 +1,204 @@
+export type AuthTenant = {
+  tenantId: string;
+  name: string;
+  slug: string;
+  role: string;
+};
+export type SessionUser = {
+  userId: string;
+  email: string;
+  roles: string[];
+  tenants: AuthTenant[];
+};
+export type Competition = {
+  id: string;
+  tenantId: string;
+  name: string;
+  slug: string;
+  status: string;
+  competitionType: string;
+  defaultLanguage: string;
+  timeZone: string;
+  startsAt: string;
+  endsAt: string;
+  numberOfWinners: number;
+  numberOfReserveWinners: number;
+  perParticipantEntryLimit: number;
+  requiresManualApproval: boolean;
+  entryLimit?: number;
+  publishedAt?: string;
+  closedAt?: string;
+};
+export type Domain = {
+  id: string;
+  tenantId: string;
+  hostname: string;
+  domainType: string;
+  status: string;
+  isPrimary: boolean;
+  verificationMethod?: string;
+  verificationToken?: string;
+  expectedDnsTarget?: string;
+  verifiedAt?: string;
+  lastCheckedAt?: string;
+  sslStatus?: string;
+  sslProvisionedAt?: string;
+  certificateExpiresAt?: string;
+  failureReason?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+export type Brand = {
+  id: string;
+  tenantId: string;
+  name: string;
+  primaryColor: string;
+  secondaryColor: string;
+  accentColor: string;
+  backgroundColor: string;
+  textColor: string;
+  headingFont: string;
+  bodyFont: string;
+  buttonStyle: string;
+  borderRadius: number;
+  footerText?: string;
+  supportEmail?: string;
+  supportPhone?: string;
+  showPoweredBy: boolean;
+  customCss?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+export type Entry = {
+  id: string;
+  entryReference: string;
+  status: string;
+  eligibilityStatus: string;
+  riskScore: number;
+  riskLevel: string;
+  submittedAt?: string;
+  rejectedReason?: string;
+};
+export type Draw = {
+  id: string;
+  drawReference: string;
+  status: string;
+  requestedWinnerCount: number;
+  requestedReserveCount: number;
+  eligibleEntryCount: number;
+  excludedEntryCount: number;
+  preparedAt?: string;
+  approvedAt?: string;
+  executedAt?: string;
+};
+export type Winner = {
+  id: string;
+  drawResultId: string;
+  entryId: string;
+  status: string;
+  firstContactedAt?: string;
+  acceptedAt?: string;
+  prizeDeliveredAt?: string;
+  disqualificationReason?: string;
+};
+export type ExportJob = {
+  id: string;
+  exportType: string;
+  format: string;
+  status: string;
+  expiresAt: string;
+  createdAt: string;
+  completedAt?: string;
+};
+export type Analytics = {
+  qrScans: number;
+  uniqueQrScans: number;
+  submittedEntries: number;
+  approvedEntries: number;
+  rejectedEntries: number;
+  highRiskEntries: number;
+  conversionRate: number;
+};
+export type Tenant = {
+  id: string;
+  name: string;
+  legalName: string;
+  slug: string;
+  status: string;
+  defaultLanguage: string;
+  timeZone: string;
+  countryCode: string;
+  currency: string;
+};
+export type TenantSummary = {
+  id: string;
+  name: string;
+  slug: string;
+  status: string;
+  activeUserCount: number;
+  createdAt: string;
+};
+export type WebhookEndpoint = {
+  id: string;
+  url: string;
+  eventTypes: string[];
+  isActive: boolean;
+  consecutiveFailureCount: number;
+  createdAt: string;
+};
+export type Plan = {
+  id: string;
+  name: string;
+  code: string;
+  monthlyPrice: number;
+  annualPrice: number;
+  features: Record<string, unknown>;
+};
+export type Subscription = {
+  id: string;
+  planId: string;
+  status: string;
+  currentPeriodStartsAt: string;
+  currentPeriodEndsAt: string;
+  trialEndsAt?: string;
+};
+export type BillingOverview = { plans: Plan[]; subscription?: Subscription };
+export type CompetitionField = {
+  id: string;
+  fieldKey: string;
+  fieldType: string;
+  label: string;
+  placeholder?: string;
+  helpText?: string;
+  isRequired: boolean;
+  displayOrder: number;
+  validationJson: string;
+  optionsJson: string;
+  isSensitive: boolean;
+  isSearchable: boolean;
+  isExportable: boolean;
+};
+export type CampaignSource = {
+  id: string;
+  name: string;
+  sourceType: string;
+  code: string;
+  isActive: boolean;
+};
+export type QrCode = {
+  id: string;
+  campaignSourceId: string;
+  shortCode: string;
+  destinationUrl: string;
+  status: string;
+  scanCount: number;
+  uniqueScanCount: number;
+};
+export type TenantUser = {
+  id: string;
+  userId: string;
+  email: string;
+  role: string;
+  status: string;
+  createdAt: string;
+};

@@ -20,7 +20,17 @@ jobs:
       - run: dotnet restore OneCompetitions.slnx
       - run: dotnet build OneCompetitions.slnx --no-restore
       - run: dotnet test OneCompetitions.slnx --no-build
+      - run: dotnet tool restore
+      - run: ASPNETCORE_ENVIRONMENT=Development dotnet ef migrations has-pending-model-changes --project apps/api/OneCompetitions.Infrastructure --startup-project apps/api/OneCompetitions.Api
       - run: npm ci
+      - run: npm audit --audit-level=high
       - run: npm test
       - run: npm run lint
       - run: npm run build
+      - name: Validate production compose
+        run: docker compose --env-file .env.production.example -f docker-compose.production.yml config --quiet
+        env:
+          API_IMAGE: one-competitions-api:test
+          WORKER_IMAGE: one-competitions-worker:test
+          WEB_IMAGE: one-competitions-web:test
+          PRODUCTION_ENV_FILE: .env.production.example

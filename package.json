@@ -10,6 +10,7 @@
     "build": "npm --workspace apps/web run build"
   },
   "overrides": {
+    "postcss": "^8.5.19",
     "next": {
       "postcss": "^8.5.19"
     }

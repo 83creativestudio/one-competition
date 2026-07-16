@@ -69,6 +69,9 @@ public sealed class AuthService(
 
     public async Task<IReadOnlyList<SessionResponse>> GetSessionsAsync(Guid userId, CancellationToken cancellationToken)
     {
+        if (dbContext.Database.IsSqlite())
+            return (await dbContext.UserSessions.Where(x => x.UserId == userId).ToListAsync(cancellationToken)).OrderByDescending(x => x.CreatedAt)
+                .Select(x => new SessionResponse(x.Id, x.CreatedAt, x.ExpiresAt, x.RevokedAt, x.IpAddress, x.UserAgent)).ToList();
         return await dbContext.UserSessions
             .Where(x => x.UserId == userId)
             .OrderByDescending(x => x.CreatedAt)

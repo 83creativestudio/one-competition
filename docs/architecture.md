@@ -1,28 +1,19 @@
 # Architecture
 
-ONE. Competitions is a monorepo with separate API, worker, and web applications.
+ONE. Competitions is a monorepo with independently deployable API, worker, and web applications.
 
-Stage 1 uses Clean Architecture for the backend:
+The backend follows Clean Architecture:
 
-- `OneCompetitions.Domain`: tenant, membership, domain, and audit entities.
-- `OneCompetitions.Application`: role constants, permission policy names, tenant context interfaces, auth and tenant service contracts.
-- `OneCompetitions.Contracts`: request and response DTOs returned by REST APIs.
-- `OneCompetitions.Infrastructure`: EF Core, PostgreSQL/SQLite provider selection, ASP.NET Core Identity, seed data, auth service, tenant access service, and audit writer.
-- `OneCompetitions.Api`: controllers, middleware, JWT auth, policies, Swagger, health endpoints, structured logging, and OpenTelemetry.
+- `OneCompetitions.Domain`: tenant, competition, entry, draw, asset, billing, queue, webhook, and audit entities.
+- `OneCompetitions.Application`: permissions, trusted tenant context, use-case contracts, and provider abstractions.
+- `OneCompetitions.Contracts`: REST request/response DTOs; EF entities are never returned directly.
+- `OneCompetitions.Infrastructure`: EF Core/PostgreSQL, Identity, business services, S3, Redis, DNS, Cloudflare, Stripe, messaging, webhooks, PDF generation, and health checks.
+- `OneCompetitions.Api`: controllers, middleware, JWT/policies, rate limits, OpenAPI, Serilog, and OpenTelemetry.
 
-Dependencies flow inward. Controllers call application interfaces and do not query EF directly.
+Dependencies flow inward. Controllers call application interfaces and contain no business logic.
 
-Stage 2 adds tenant domain management, development domain verification, brand profiles, and public theme resolution.
+The worker executes an idempotent cycle under a Redis lease. It processes automatic closing, DNS/SSL checks, email/SMS, exports, webhooks, draw certificates, winner reminders, retention anonymisation, and expired export cleanup. Durable records carry attempt, availability, and lease fields so abandoned work can resume.
 
-The MVP core adds:
+The web application uses a same-origin backend-for-frontend proxy. Access and rotating refresh tokens remain in HTTP-only cookies; React Query powers authenticated dashboard reads and mutations. Public campaign and draw-verification routes use server rendering.
 
-- Competition CRUD, lifecycle, fields, rules, page JSON, publishing, and configuration versions.
-- Public competition lookup and participant entry submission with idempotency, required fields, required consent enforcement, duplicate email/phone risk signals, and public entry references.
-- Campaign sources, QR-code redirect tracking, and basic analytics.
-- Entry review, approval, rejection, duplicate, and disqualification workflow.
-- Draw preparation with immutable entry snapshots, pool hashes, approval, cryptographically secure winner and reserve selection without replacement, and replay protection.
-- Winner claims with contact, acceptance, disqualification, reserve promotion, and delivery status.
-- Export job records for CSV-style asynchronous export handoff.
-- Data models for plans, subscriptions, feature flags, assets, retention policies, and webhooks.
-
-Production integrations that remain intentionally abstracted or shallow include real DNS/SSL providers, object storage, queued notification delivery, PDF certificate generation, webhook delivery workers, retention workers, and payment providers.
+PostgreSQL is authoritative relational storage, Redis coordinates distributed work, and S3-compatible storage holds uploads, exports, and certificates. All storage keys and cache/lock keys are tenant-aware where ownership applies.

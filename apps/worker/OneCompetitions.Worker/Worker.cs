@@ -1,16 +1,29 @@
+using OneCompetitions.Application.Jobs;
+
 namespace OneCompetitions.Worker;
 
-public class Worker(ILogger<Worker> logger) : BackgroundService
+public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            if (logger.IsEnabled(LogLevel.Information))
+            try
             {
-                logger.LogInformation("Worker running at: {time}", DateTimeOffset.Now);
+                await using var scope = scopeFactory.CreateAsyncScope();
+                var processed = await scope.ServiceProvider.GetRequiredService<IPlatformJobProcessor>().RunOnceAsync(stoppingToken);
+                logger.LogInformation("Background cycle processed {ProcessedCount} items", processed);
             }
-            await Task.Delay(1000, stoppingToken);
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception exception)
+            {
+                logger.LogError(exception, "Background cycle failed");
+            }
+
+            await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken);
         }
     }
 }

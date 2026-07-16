@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using OneCompetitions.Application.Auth;
 using OneCompetitions.Domain.Branding;
+using OneCompetitions.Domain.Billing;
 using OneCompetitions.Domain.Tenants;
 using OneCompetitions.Infrastructure.Identity;
 using OneCompetitions.Infrastructure.Persistence;
@@ -55,6 +56,15 @@ public sealed class TestApplicationFactory : WebApplicationFactory<Program>
         var omega = await EnsureTenantAsync(db, "Omega TV", "omega-tv");
         await EnsureBrandAsync(db, one.Id, "ONE. Digital");
         await EnsureBrandAsync(db, omega.Id, "Omega TV");
+        if (!await db.Plans.AnyAsync())
+        {
+            db.Plans.Add(new Plan
+            {
+                Id = Guid.NewGuid(), Name = "Test", Code = "test", MonthlyPrice = 0, AnnualPrice = 0,
+                FeatureConfigurationJson = "{\"MaximumActiveCompetitions\":100,\"MaximumCustomDomains\":100,\"AllowCustomDomain\":true,\"AllowExports\":true,\"AllowDrawCertificate\":true,\"AllowWebhooks\":true}",
+                IsActive = true, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow
+            });
+        }
 
         await EnsureUserAsync(userManager, db, "admin@onecompetitions.local", true, one.Id, true);
         await EnsureUserAsync(userManager, db, "owner@one.local", false, one.Id, true);

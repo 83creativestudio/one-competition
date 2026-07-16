@@ -11,4 +11,7 @@ public sealed class WebhookDelivery
     public string? LastError { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? DeliveredAt { get; set; }
+    public DateTimeOffset NextAttemptAt { get; set; }
+    public DateTimeOffset? LockedUntil { get; set; }
+    public string? ResponseBodyPreview { get; set; }
 }

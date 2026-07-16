@@ -18,4 +18,5 @@ COPY --from=build /app/package-lock.json ./package-lock.json
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/apps/web ./apps/web
 EXPOSE 3000
+USER node
 CMD ["npm", "--workspace", "apps/web", "run", "start"]

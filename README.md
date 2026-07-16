@@ -1,99 +1,96 @@
 # ONE. Competitions
 
-ONE. Competitions is a multi-tenant SaaS platform for competition and giveaway management. The current implementation includes the deployable foundation, domain and branding capabilities, and a compact MVP core for standard-draw competitions: competition management, fields, rules, page JSON, public entry submission, duplicate email/phone risk scoring, QR/source tracking, analytics overview, entry review, immutable draw snapshots, cryptographically secure winner/reserve selection, winner workflow, export job records, Docker scaffolding, CI, and a Next.js route shell.
+ONE. Competitions is a multi-tenant SaaS platform for competition and giveaway management. It implements the standard-draw workflow from tenant/domain setup through public entries, review, immutable draws, winner management, CSV exports, and publicly verifiable PDF draw certificates.
 
 ## Architecture
 
-- `apps/api`: ASP.NET Core API using Clean Architecture projects.
-- `apps/worker`: .NET Worker Service placeholder for tenant-aware background jobs.
-- `apps/web`: Next.js App Router frontend shell.
-- `tests`: .NET unit, integration, and security tests.
-- `docs`: architecture and operating documentation.
+- `apps/api`: ASP.NET Core Clean Architecture API with PostgreSQL, Identity, REST/OpenAPI, Serilog, and OpenTelemetry.
+- `apps/worker`: tenant-aware, Redis-lock protected background job processor.
+- `apps/web`: Next.js App Router operations console, BFF auth proxy, and public routes.
+- `tests`: domain, API integration, and cross-tenant security tests.
+- `infrastructure`: Docker, Nginx, and deployment configuration.
+- `docs`: architecture, security, domain, lifecycle, privacy, and operating documentation.
 
-## Implemented APIs
+## Implemented Capabilities
 
-- Tenant domains: list, create, verify, set primary, delete.
-- Brand profiles: list, create, get, update, delete.
-- Public theme: subdomain/custom-domain route and platform path route.
-- Competitions: create, update, publish, close, versions.
-- Fields, rules, and page JSON.
-- Public competition lookup and entry submission.
-- Entries: list, approve, reject, duplicate, disqualify.
-- Campaign sources, QR codes, QR redirect, analytics overview.
-- Draws: prepare, approve, execute, results.
-- Winners: contact, accept, disqualify, deliver prize.
-- Exports: create/list export jobs.
+- Tenant resolution, membership, roles, JWT sessions, rotating refresh tokens, and append-only audits.
+- Platform paths/subdomains, custom domains, live DNS TXT verification, Cloudflare SSL provisioning, and brand profiles.
+- Competition lifecycle, rules, dynamic fields/page JSON, public entries, duplicate/risk checks, QR/source attribution, and analytics.
+- Entry review, immutable draw snapshots, four-eye approval, secure winner/reserve selection, winner claims, and reserve promotion.
+- S3 uploads, MIME signature validation, malware scanning, hashes, and signed downloads.
+- Queued email/SMS, HMAC-signed webhooks, retries/dead letters, automatic closing, exports, reminders, and retention processing.
+- Stripe checkout/webhooks and server-enforced subscription and plan limits.
+- Draw certificate PDF generation and `/draw/{drawReference}` public integrity verification.
+- API-backed dashboard screens for core operations, domains, brands, billing, integrations, and platform tenant/health views.
 
 ## Prerequisites
 
 - .NET SDK 10.0.x
 - Node.js 22.x and npm 11.x
-- PostgreSQL 17 for local API execution
-- Redis 7 for later queue/cache work
-- Docker is optional for local services; the current machine used for this implementation did not have Docker CLI installed.
+- PostgreSQL 17
+- Redis 7
+- S3-compatible object storage; MinIO is included in local Docker Compose
+- Docker for the complete local stack
 
 ## Local Setup
 
-1. Copy `.env.example` to `.env` and replace secrets.
-2. Start PostgreSQL and Redis, or use `docker compose up postgres redis` when Docker is available.
-3. Restore backend packages: `dotnet restore OneCompetitions.slnx`.
-4. Restore frontend packages: `npm ci`.
-5. Apply migrations by running the API in development; the development seeder calls `Database.Migrate()`.
+1. Copy `.env.example` to `.env` and replace development secrets.
+2. Run `docker compose up --build` for PostgreSQL, Redis, MinIO, API, worker, web, and Nginx.
+3. Open `http://localhost:8080`; MinIO Console is at `http://localhost:9001`.
 
-## Environment Variables
-
-Required variables are documented in `.env.example`. Production must provide `JWT_SIGNING_KEY`, `DATABASE_CONNECTION_STRING`, platform domains, object storage settings, provider credentials, and encryption keys through secret management.
-
-## Database Migrations
-
-Migrations are in `apps/api/OneCompetitions.Infrastructure/Persistence/Migrations`:
-
-- `InitialFoundation`
-- `AddDomainsAndBranding`
-- `AddCompetitionMvpCore`
-
-Generate future migrations with the repo-local EF tool:
+To run processes directly:
 
 ```bash
 dotnet tool restore
-dotnet dotnet-ef migrations add <Name> --project apps/api/OneCompetitions.Infrastructure/OneCompetitions.Infrastructure.csproj --startup-project apps/api/OneCompetitions.Api/OneCompetitions.Api.csproj --output-dir Persistence/Migrations
-```
-
-## Running the API
-
-```bash
-export JWT_SIGNING_KEY=replace-with-at-least-32-random-characters
-export DATABASE_CONNECTION_STRING="Host=localhost;Port=5432;Database=one_competitions;Username=one;Password=one_dev_password"
-dotnet run --project apps/api/OneCompetitions.Api/OneCompetitions.Api.csproj
-```
-
-Swagger is available in development at `/swagger`.
-
-## Running the Worker
-
-```bash
-dotnet run --project apps/worker/OneCompetitions.Worker/OneCompetitions.Worker.csproj
-```
-
-## Running the Frontend
-
-```bash
+dotnet restore OneCompetitions.slnx
+npm ci
+dotnet run --project apps/api/OneCompetitions.Api
+dotnet run --project apps/worker/OneCompetitions.Worker
 npm --workspace apps/web run dev
 ```
 
-## Running Tests
+Swagger is available from the API in Development at `/swagger`.
+
+## Environment
+
+`.env.example` documents local variables. `.env.production.example` is the production contract for database, Redis, trusted proxies, cryptographic keys, platform domains, S3, DNS/SSL, malware scanning, messaging, and Stripe. Store real values in a secret manager; never commit `.env` or `.env.production`.
+
+Production rejects development DNS, SSL, storage, scanner, messaging, and lock providers at startup.
+
+## Database Migrations
+
+Migrations are under `apps/api/OneCompetitions.Infrastructure/Persistence/Migrations`, including `AddProductionOperations`.
 
 ```bash
+ASPNETCORE_ENVIRONMENT=Development dotnet ef migrations add <Name> \
+  --project apps/api/OneCompetitions.Infrastructure \
+  --startup-project apps/api/OneCompetitions.Api
+```
+
+The API image contains `/app/efbundle` for intentional production migration jobs.
+
+## Verification
+
+```bash
+dotnet build OneCompetitions.slnx
 dotnet test OneCompetitions.slnx
 npm test
 npm run lint
 npm run build
+npm audit --audit-level=high
 ```
 
 ## Demo Credentials
 
-Development seeding creates `admin@onecompetitions.local`. Set `DEV_ADMIN_PASSWORD`; if omitted in development only, the fallback is `DevelopmentOnly!ChangeMe123`.
+Development seeding creates `admin@onecompetitions.local`. Configure `DEV_ADMIN_PASSWORD`; the Development-only fallback is `DevelopmentOnly!ChangeMe123`.
 
-## Deployment Overview
+## Deployment
 
-Use the Dockerfiles in `infrastructure/docker` and route traffic through Nginx. Production must terminate HTTPS, set secure secrets, run PostgreSQL migrations intentionally, and disable all development-only defaults.
+Build the images in `infrastructure/docker`, configure secret-backed production environment values, run the migration profile, then start `docker-compose.production.yml`. TLS should terminate at the load balancer or ingress before Nginx.
+
+```bash
+docker compose -f docker-compose.production.yml --profile migration run --rm migrate
+docker compose -f docker-compose.production.yml up -d
+```
+
+Current limitations: SMS is provider-ready but not used by the MVP entry flow; self-service privacy request APIs and competition-specific upload cleanup are incomplete; Kubernetes manifests and high-volume queue partitioning are not included; Cloudflare and Stripe require account-side configuration. The latest stable Next.js release currently carries a moderate transitive PostCSS advisory.

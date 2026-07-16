@@ -12,6 +12,9 @@ public sealed record TenantDomainResponse(
     string? ExpectedDnsTarget,
     DateTimeOffset? VerifiedAt,
     DateTimeOffset? LastCheckedAt,
+    string? SslStatus,
+    DateTimeOffset? SslProvisionedAt,
+    DateTimeOffset? CertificateExpiresAt,
     string? FailureReason,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt);

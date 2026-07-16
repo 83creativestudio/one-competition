@@ -1,21 +1,17 @@
 # Security
 
-Stage 1 security controls:
+Implemented controls include:
 
-- ASP.NET Core Identity password hashing.
-- Account lockout settings.
-- JWT bearer authentication.
-- Explicit authorization policies.
-- Tenant membership checks in application services.
-- EF Core query filters for tenant-scoped records.
-- Unknown-host rejection.
-- Secure headers including CSP, frame denial, and nosniff.
-- Append-only audit event protection.
-- Cross-tenant integration and security tests.
-- Dashboard custom-domain creation restricted to tenant owners, tenant administrators, or platform administrators.
-- Custom CSS rejection for scripts, `javascript:` URLs, and executable CSS expressions.
-- Development domain verification provider guarded against production use.
+- ASP.NET Core Identity hashing, account lockout, confirmed email, JWT validation, rotating refresh sessions, and revocation.
+- Explicit platform/tenant policies, service-level membership checks, tenant middleware, EF query filters, and cross-tenant tests.
+- HTTPS/HSTS in production, CSP and secure headers, fixed-window rate limiting, strict same-origin BFF mutations, and HTTP-only cookies.
+- One-hop forwarded headers restricted to configured proxy addresses/networks.
+- Append-only audit events and sanitized production error responses/logging.
+- Production startup rejection for development DNS, SSL, storage, scanner, messaging, or lock providers.
+- S3 presigned URLs, tenant-prefixed keys, size/extension/MIME signature checks, malware scanning, and SHA-256 file hashes.
+- AES-GCM encryption for webhook secrets, HMAC-SHA256 delivery signatures, retries/dead letters, and endpoint disablement.
+- Public-network validation when webhook endpoints are created and delivered to reduce SSRF and DNS-rebinding exposure.
+- Redis locks for draw execution and worker cycles; immutable snapshots and replay protection for completed draws.
+- Stripe webhook signature validation and backend subscription/plan enforcement.
 
-Never log passwords, OAuth secrets, complete verification codes, payment data, or unmasked participant personal data.
-
-Production must use HTTPS, real secrets, secure cookie domains, managed secret storage, and provider-specific credential encryption.
+Never log passwords, provider secrets, verification codes, payment data, or normal unmasked participant PII. Production keys and credentials belong in a managed secret store.

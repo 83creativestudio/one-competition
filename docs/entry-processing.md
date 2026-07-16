@@ -1,12 +1,7 @@
 # Entry Processing
 
-Participant entry processing is deferred to Stage 4.
+Public submission resolves the tenant and published competition, validates lifecycle/time, idempotency, required dynamic fields and consent, then resolves or creates a tenant-specific participant inside a transaction. Answers are stored as structured records and public responses use generated entry references.
 
-Stage 1 prepares:
+Duplicate email/phone checks create risk signals and scores. Manual-approval campaigns enter review; eligible automatic campaigns are approved. Confirmation notification and webhook events are queued after persistence so provider latency does not block the public response.
 
-- Trusted tenant context.
-- Authenticated tenant user access.
-- Append-only audit infrastructure.
-- Database migration workflow.
-
-Future entry submission must resolve tenant from hostname, validate competition state, enforce idempotency, save structured answers and consents, and queue notifications without blocking the public flow.
+Email verification tokens, CAPTCHA/Turnstile, geo/age policies, phone verification, and encrypted sensitive dynamic answers remain to be completed.

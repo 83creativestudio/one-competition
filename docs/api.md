@@ -82,6 +82,7 @@ Draws, winners, and exports:
 - `POST /api/competitions/{id}/draws/{drawId}/approve`
 - `POST /api/competitions/{id}/draws/{drawId}/execute`
 - `GET /api/competitions/{id}/draws/{drawId}/results`
+- `GET /api/competitions/{id}/draws/{drawId}/certificate`
 - `GET /api/competitions/{id}/winners`
 - `POST /api/competitions/{id}/winners/{winnerId}/contact`
 - `POST /api/competitions/{id}/winners/{winnerId}/accept`
@@ -89,6 +90,21 @@ Draws, winners, and exports:
 - `POST /api/competitions/{id}/winners/{winnerId}/deliver-prize`
 - `GET /api/competitions/{id}/exports`
 - `POST /api/competitions/{id}/exports`
+- `GET /api/competitions/{id}/exports/{exportId}/download`
+
+Assets, webhooks, billing, and verification:
+
+- `POST /api/assets/uploads`
+- `PUT /api/assets/{assetId}/local-content` (Development/Testing only)
+- `POST /api/assets/{assetId}/complete`
+- `GET /api/assets/{assetId}/download`
+- `GET /api/webhooks`
+- `POST /api/webhooks`
+- `DELETE /api/webhooks/{endpointId}`
+- `GET /api/billing`
+- `POST /api/billing/checkout`
+- `POST /api/billing/stripe/webhook`
+- `GET /api/public/draws/{drawReference}/verification`
 
 Platform:
 

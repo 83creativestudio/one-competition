@@ -15,4 +15,6 @@ public sealed class ExportJob : TenantScopedEntity
     public string? FailureReason { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? CompletedAt { get; set; }
+    public int AttemptCount { get; set; }
+    public DateTimeOffset? LockedUntil { get; set; }
 }

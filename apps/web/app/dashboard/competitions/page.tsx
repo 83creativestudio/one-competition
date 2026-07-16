@@ -1,30 +1,21 @@
-import Link from "next/link";
+"use client";
 
-const competitions = [
-  ["Win an iPhone", "Live", "3 approved entries"],
-  ["Summer Restaurant Giveaway", "Draft", "0 entries"],
-  ["Live TV Prize Draw", "Closed", "Draw ready"]
-];
+import { useQuery } from "@tanstack/react-query";
+import { Plus } from "lucide-react";
+import Link from "next/link";
+import { ErrorState, formatDate, LoadingState, PageHeading, StatusBadge } from "@/components/operations-ui";
+import { apiFetch } from "@/lib/api";
+import type { Competition } from "@/lib/contracts";
 
 export default function CompetitionsPage() {
-  return (
-    <main className="mx-auto max-w-6xl px-6 py-8">
-      <div className="flex items-end justify-between border-b border-line pb-6">
-        <div>
-          <h1 className="text-2xl font-semibold text-ink">Competitions</h1>
-          <p className="mt-2 text-sm text-neutral-700">Create, publish, close, and prepare standard draw campaigns.</p>
-        </div>
-        <Link className="rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white" href="/dashboard/competitions/new">New competition</Link>
-      </div>
-      <div className="mt-6 overflow-hidden rounded-md border border-line bg-white">
-        {competitions.map(([name, status, entries]) => (
-          <Link className="grid grid-cols-3 border-b border-line px-4 py-4 text-sm last:border-b-0" href="/dashboard/competitions/demo" key={name}>
-            <span className="font-medium">{name}</span>
-            <span>{status}</span>
-            <span>{entries}</span>
-          </Link>
-        ))}
-      </div>
-    </main>
-  );
+  const query = useQuery({ queryKey: ["competitions"], queryFn: () => apiFetch<Competition[]>("api/competitions") });
+  return <main className="page">
+    <PageHeading title="Competitions" description="Create, publish, close, and operate standard draw campaigns."
+      action={<Link className="command-button" href="/dashboard/competitions/new"><Plus size={17} />New competition</Link>} />
+    {query.isLoading ? <LoadingState /> : query.error ? <ErrorState error={query.error} /> :
+      <div className="table-wrap"><table className="data-table"><thead><tr><th>Competition</th><th>Status</th><th>Opens</th><th>Closes</th><th>Winners</th></tr></thead><tbody>
+        {query.data?.map(item => <tr key={item.id}><td><Link className="font-semibold text-emerald-800 hover:underline" href={`/dashboard/competitions/${item.id}`}>{item.name}</Link><div className="mt-1 text-xs text-muted">/{item.slug}</div></td><td><StatusBadge value={item.status} /></td><td>{formatDate(item.startsAt)}</td><td>{formatDate(item.endsAt)}</td><td>{item.numberOfWinners} + {item.numberOfReserveWinners} reserves</td></tr>)}
+        {!query.data?.length && <tr><td colSpan={5}><div className="empty-state">No competitions have been created.</div></td></tr>}
+      </tbody></table></div>}
+  </main>;
 }

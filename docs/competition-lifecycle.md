@@ -1,13 +1,7 @@
 # Competition Lifecycle
 
-Competition entities and lifecycle transitions are deferred to Stage 3.
+The standard-draw lifecycle supports draft creation, publication/version capture, scheduled/live operation, manual or automatic close, draw preparation/approval/execution, winner verification, completion, and archive/cancel states in the domain model.
 
-Stage 1 establishes prerequisites:
+Publishing validates rules, form configuration, dates, and limits and records an immutable configuration version. The worker closes elapsed scheduled/live/paused competitions under a distributed cycle lease and writes a system audit event. New entries validate current UTC time and state on the server.
 
-- Tenant isolation.
-- Authenticated staff access.
-- Platform administration access.
-- Audit log foundation.
-- Worker project for future scheduled opening and closing.
-
-The lifecycle will be added only after Stage 2 domains and branding are complete.
+Pause/resume, legal/client review transitions, reopening controls, and competition/page-level brand overrides need additional API/UI workflows.

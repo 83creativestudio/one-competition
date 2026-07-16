@@ -1,14 +1,7 @@
 # Multi-Tenancy
 
-Every tenant-owned record includes `TenantId`. Stage 1 entities with tenant scope are `TenantUser`, `TenantDomain`, and `AuditEvent`.
+Every tenant-owned aggregate stores `TenantId`. A trusted scoped context is populated from an active domain/path or a verified authenticated membership; browser-supplied tenant identifiers are not trusted.
 
-Tenant resolution order implemented:
+Isolation is layered: authentication claims, middleware host/membership validation, application-service role checks, explicit tenant predicates for system work, EF global query filters, tenant-prefixed object keys, tenant-aware lock/dedup keys, and security tests. Platform administrators may bypass tenant membership only through explicit platform authorization paths.
 
-1. Platform path `/c/{tenantSlug}`.
-2. Platform subdomain `{tenantSlug}.{PLATFORM_BASE_DOMAIN}`.
-3. Authenticated user tenant claims.
-4. Active tenant custom domain records.
-
-The API uses a scoped `ITenantContext` populated by middleware. EF Core global filters protect tenant-scoped tables, while application services still perform explicit user-to-tenant access checks.
-
-Unknown custom hosts are rejected before authorization. Suspended, cancelled, and archived tenants are rejected.
+Background jobs use `IgnoreQueryFilters()` only when scanning all tenants and then retain explicit `TenantId` predicates/ownership on resulting operations. Public endpoints must resolve tenant from the request host or platform path.

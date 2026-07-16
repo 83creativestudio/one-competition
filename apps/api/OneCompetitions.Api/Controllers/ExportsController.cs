@@ -19,4 +19,8 @@ public sealed class ExportsController(IExportService exports) : ControllerBase
     [HttpPost]
     public async Task<ActionResult<ExportJobResponse>> Create(Guid competitionId, CreateExportRequest request, CancellationToken cancellationToken)
         => Ok(await exports.CreateAsync(User.GetUserId(), competitionId, request, cancellationToken));
+
+    [HttpGet("{exportId:guid}/download")]
+    public async Task<IActionResult> Download(Guid competitionId, Guid exportId, CancellationToken cancellationToken)
+        => Redirect(await exports.GetDownloadUrlAsync(User.GetUserId(), competitionId, exportId, cancellationToken));
 }

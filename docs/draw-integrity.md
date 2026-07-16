@@ -1,12 +1,10 @@
 # Draw Integrity
 
-Draw preparation, immutable snapshots, secure random winner selection, reserve winners, and draw certificates are deferred to Stage 7 and Stage 8.
-
-Stage 1 foundations relevant to draw integrity:
-
-- Role constants include `DrawOperator` and `Auditor`.
-- Audit events are append-only.
-- Worker project exists for future draw certificate generation.
-- Database migrations are established.
-
-Production draw logic must use server-side cryptographically secure randomness and distributed locking.
+- Draw preparation freezes eligible entries into immutable snapshots.
+- Canonical pool and configuration hashes detect later alteration.
+- Optional separate approval enforces four-eye operation.
+- Execution verifies competition state and pool hashes, acquires a distributed lock, and persists cryptographically secure selection without replacement in one transaction.
+- Completed draws cannot execute twice; changed eligibility requires a new draw.
+- Winner and reserve positions are preserved, including later disqualification/promotion history.
+- The worker generates a PDF certificate containing audit-safe references and a public verification QR code.
+- `/api/public/draws/{drawReference}/verification` recomputes the certificate SHA-256 hash and reveals no participant PII.

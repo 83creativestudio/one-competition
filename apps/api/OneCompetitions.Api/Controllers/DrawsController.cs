@@ -10,7 +10,7 @@ namespace OneCompetitions.Api.Controllers;
 [ApiController]
 [Route("api/competitions/{competitionId:guid}/draws")]
 [Authorize(Policy = AppPolicies.TenantMember)]
-public sealed class DrawsController(IDrawService draws) : ControllerBase
+public sealed class DrawsController(IDrawService draws, IDrawCertificateService certificates) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<DrawResponse>>> Index(Guid competitionId, CancellationToken cancellationToken)
@@ -31,4 +31,8 @@ public sealed class DrawsController(IDrawService draws) : ControllerBase
     [HttpGet("{drawId:guid}/results")]
     public async Task<ActionResult<IReadOnlyList<DrawResultResponse>>> Results(Guid competitionId, Guid drawId, CancellationToken cancellationToken)
         => Ok(await draws.ResultsAsync(User.GetUserId(), competitionId, drawId, cancellationToken));
+
+    [HttpGet("{drawId:guid}/certificate")]
+    public async Task<IActionResult> Certificate(Guid competitionId, Guid drawId, CancellationToken cancellationToken)
+        => Redirect(await certificates.GetCertificateDownloadUrlAsync(User.GetUserId(), competitionId, drawId, cancellationToken));
 }

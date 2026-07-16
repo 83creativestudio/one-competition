@@ -1,90 +1,37 @@
-const swatches = [
-  ["Primary", "#0f766e"],
-  ["Secondary", "#111827"],
-  ["Accent", "#c2410c"],
-  ["Background", "#ffffff"],
-  ["Text", "#111827"]
-];
+"use client";
+
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Palette, Plus, Save, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ErrorState, LoadingState, PageHeading } from "@/components/operations-ui";
+import { apiFetch } from "@/lib/api";
+import type { Brand } from "@/lib/contracts";
+
+const blank = { name: "Campaign brand", primaryColor: "#006c5b", secondaryColor: "#171918", accentColor: "#d14b30", backgroundColor: "#ffffff", textColor: "#171918", headingFont: "Inter", bodyFont: "Inter", buttonStyle: "solid", borderRadius: 6, footerText: "", supportEmail: "", supportPhone: "", showPoweredBy: true, customCss: "" };
 
 export default function BrandsPage() {
-  return (
-    <main className="mx-auto max-w-6xl px-6 py-8">
-      <div className="flex flex-col gap-4 border-b border-line pb-6 md:flex-row md:items-end md:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-ink">Brand Profiles</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-neutral-700">
-            Control the tenant theme used by public campaign pages, confirmation screens, and future notifications.
-          </p>
-        </div>
-        <button className="w-fit rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white">New brand</button>
-      </div>
-
-      <section className="mt-6 grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
-        <form className="rounded-md border border-line bg-white p-5">
-          <h2 className="text-base font-semibold text-ink">Tenant default</h2>
-          <div className="mt-5 grid gap-4">
-            <label className="grid gap-1 text-sm font-medium text-neutral-800">
-              Brand name
-              <input className="rounded-md border border-line px-3 py-2 text-sm" defaultValue="ONE. Digital" />
-            </label>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="grid gap-1 text-sm font-medium text-neutral-800">
-                Heading font
-                <input className="rounded-md border border-line px-3 py-2 text-sm" defaultValue="Inter" />
-              </label>
-              <label className="grid gap-1 text-sm font-medium text-neutral-800">
-                Body font
-                <input className="rounded-md border border-line px-3 py-2 text-sm" defaultValue="Inter" />
-              </label>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="grid gap-1 text-sm font-medium text-neutral-800">
-                Support email
-                <input className="rounded-md border border-line px-3 py-2 text-sm" defaultValue="support@onecompetitions.local" />
-              </label>
-              <label className="grid gap-1 text-sm font-medium text-neutral-800">
-                Border radius
-                <input className="rounded-md border border-line px-3 py-2 text-sm" defaultValue="6" />
-              </label>
-            </div>
-          </div>
-          <div className="mt-5 flex gap-2">
-            <button className="rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white" type="button">
-              Save profile
-            </button>
-            <button className="rounded-md border border-line px-4 py-2 text-sm font-semibold" type="button">
-              Preview
-            </button>
-          </div>
-        </form>
-
-        <div className="space-y-4">
-          <section className="rounded-md border border-line bg-white p-5">
-            <h2 className="text-base font-semibold text-ink">Colours</h2>
-            <div className="mt-4 grid gap-3 sm:grid-cols-5">
-              {swatches.map(([label, color]) => (
-                <div className="rounded-md border border-line p-3" key={label}>
-                  <div className="h-10 rounded" style={{ backgroundColor: color }} />
-                  <div className="mt-3 text-sm font-medium">{label}</div>
-                  <div className="text-xs text-neutral-600">{color}</div>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <section className="rounded-md border border-line bg-white p-5">
-            <h2 className="text-base font-semibold text-ink">Public theme preview</h2>
-            <div className="mt-4 rounded-md border border-line bg-[#ffffff] p-5 text-[#111827]">
-              <div className="text-sm font-semibold text-[#0f766e]">ONE. Digital</div>
-              <h3 className="mt-2 text-2xl font-semibold">Win the summer prize draw</h3>
-              <p className="mt-2 max-w-xl text-sm leading-6 text-neutral-700">
-                Public pages inherit this tenant profile until a competition-specific override is introduced.
-              </p>
-              <button className="mt-4 rounded-md bg-[#0f766e] px-4 py-2 text-sm font-semibold text-white">Enter now</button>
-            </div>
-          </section>
-        </div>
-      </section>
-    </main>
-  );
+  const cache = useQueryClient();
+  const query = useQuery({ queryKey: ["brands"], queryFn: () => apiFetch<Brand[]>("api/brands") });
+  const [selectedId, setSelectedId] = useState<string>();
+  const [form, setForm] = useState(blank);
+  useEffect(() => { const selected = query.data?.find(x => x.id === selectedId) ?? query.data?.[0]; if (selected) { setSelectedId(selected.id); setForm({ ...blank, ...selected }); } }, [query.data, selectedId]);
+  const refresh = () => cache.invalidateQueries({ queryKey: ["brands"] });
+  const save = useMutation({ mutationFn: () => apiFetch<Brand>(selectedId ? `api/brands/${selectedId}` : "api/brands", { method: selectedId ? "PATCH" : "POST", body: JSON.stringify(form) }), onSuccess: item => { setSelectedId(item.id); refresh(); } });
+  const remove = useMutation({ mutationFn: (id: string) => apiFetch<void>(`api/brands/${id}`, { method: "DELETE" }), onSuccess: () => { setSelectedId(undefined); setForm(blank); refresh(); } });
+  const set = (key: keyof typeof blank, value: string | number | boolean) => setForm(current => ({ ...current, [key]: value }));
+  return <main className="page"><PageHeading title="Brand profiles" description="Define tenant themes used by public campaigns and notification content." action={<button className="secondary-button" onClick={() => { setSelectedId(undefined); setForm(blank); }}><Plus size={17} />New profile</button>} />
+    {query.isLoading ? <LoadingState /> : query.error ? <ErrorState error={query.error} /> : <div className="grid gap-5 lg:grid-cols-[250px_1fr]">
+      <aside className="panel self-start p-2">{query.data?.map(brand => <button className={`flex w-full items-center gap-3 px-3 py-3 text-left text-sm ${selectedId === brand.id ? "bg-neutral-100 font-semibold" : "hover:bg-neutral-50"}`} key={brand.id} onClick={() => setSelectedId(brand.id)}><span className="h-5 w-5 border border-line" style={{ background: brand.primaryColor }} />{brand.name}</button>)}{!query.data?.length && <div className="p-4 text-sm text-muted">No profiles yet.</div>}</aside>
+      <div className="grid gap-5 xl:grid-cols-[1fr_0.9fr]"><form className="panel grid gap-4 p-5 sm:grid-cols-2" onSubmit={event => { event.preventDefault(); save.mutate(); }}>
+        <label className="field sm:col-span-2"><span>Name</span><input required value={form.name} onChange={e => set("name", e.target.value)} /></label>
+        {(["primaryColor", "secondaryColor", "accentColor", "backgroundColor", "textColor"] as const).map(key => <label className="field" key={key}><span>{key.replace("Color", " colour")}</span><div className="flex gap-2"><input className="!w-12 !px-1" type="color" value={form[key]} onChange={e => set(key, e.target.value)} /><input value={form[key]} onChange={e => set(key, e.target.value)} /></div></label>)}
+        <label className="field"><span>Heading font</span><input value={form.headingFont} onChange={e => set("headingFont", e.target.value)} /></label><label className="field"><span>Body font</span><input value={form.bodyFont} onChange={e => set("bodyFont", e.target.value)} /></label>
+        <label className="field"><span>Support email</span><input type="email" value={form.supportEmail} onChange={e => set("supportEmail", e.target.value)} /></label><label className="field"><span>Border radius</span><input max={24} min={0} type="number" value={form.borderRadius} onChange={e => set("borderRadius", Number(e.target.value))} /></label>
+        <label className="flex items-center gap-3 text-sm font-medium sm:col-span-2"><input type="checkbox" checked={form.showPoweredBy} onChange={e => set("showPoweredBy", e.target.checked)} />Show powered by ONE. Competitions</label>
+        {save.error && <p className="text-sm text-red-700 sm:col-span-2">{save.error.message}</p>}
+        <div className="flex gap-2 sm:col-span-2"><button className="command-button" disabled={save.isPending}><Save size={17} />Save profile</button>{selectedId && <button className="danger-button" type="button" onClick={() => remove.mutate(selectedId)}><Trash2 size={16} />Delete</button>}</div>
+      </form>
+      <section className="panel self-start overflow-hidden"><div className="panel-header"><h2 className="font-semibold">Theme preview</h2><Palette size={18} /></div><div className="p-5" style={{ background: form.backgroundColor, color: form.textColor, fontFamily: form.bodyFont }}><div className="text-sm font-semibold" style={{ color: form.primaryColor }}>{form.name}</div><h3 className="mt-5 text-2xl font-semibold" style={{ fontFamily: form.headingFont }}>Win the featured prize</h3><p className="mt-3 text-sm leading-6">This preview resolves the current colours, type and control styling without executing custom CSS.</p><button className="mt-5 px-4 py-2 text-sm font-semibold text-white" style={{ background: form.primaryColor, borderRadius: form.borderRadius }}>Enter competition</button><div className="mt-6 border-t pt-3 text-xs" style={{ borderColor: form.secondaryColor }}>{form.showPoweredBy ? "Powered by ONE. Competitions" : form.footerText}</div></div></section></div>
+    </div>}
+  </main>;
 }

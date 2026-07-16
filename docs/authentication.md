@@ -1,20 +1,7 @@
 # Authentication
 
-Dashboard authentication uses ASP.NET Core Identity with secure password hashing, account lockout settings, unique emails, and confirmed email requirements.
+ASP.NET Core Identity stores staff users and roles. Login requires confirmed email, enforces account lockout, creates a revocable session, and returns a short-lived JWT plus one-time rotating refresh token. Refresh use revokes the previous token; logout/session deletion revokes server-side state.
 
-Stage 1 login flow:
+The Next.js BFF stores access/refresh tokens in HTTP-only, SameSite=Strict cookies and proxies API requests with bearer authentication. Mutations reject cross-origin requests. The profile cookie is display-only; authorization always occurs in the API.
 
-1. `POST /api/auth/login` validates email and password.
-2. The API issues a short-lived JWT access token.
-3. The API creates a hashed refresh-token session record.
-4. The raw refresh token is returned and also written to an HTTP-only cookie.
-
-Implemented endpoints:
-
-- `POST /api/auth/login`
-- `POST /api/auth/refresh`
-- `POST /api/auth/logout`
-- `GET /api/auth/sessions`
-- `DELETE /api/auth/sessions/{id}`
-
-Production must configure `JWT_SIGNING_KEY`. Development and Testing have guarded fallbacks only.
+Platform roles are distinct from tenant memberships. Tenant claims are issued only from active memberships, and middleware verifies tenant/host state for each request. MFA, password reset, user invitation, and participant social-login flows remain to be completed.

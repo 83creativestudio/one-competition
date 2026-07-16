@@ -1,5 +1,5 @@
 # Fraud Engine
 
-Fraud scoring and review queues are deferred to Stage 6.
+The MVP detects duplicate tenant/competition email and phone identities, records entry risk signals, computes a basic score/level, and exposes an auditable review queue. Reviewers may approve, reject, mark duplicate, or disqualify entries with reasons. Shared IP alone is not an automatic block.
 
-Stage 1 does not create entry or fraud entities. Future implementation will add rule definitions, risk signals, configurable thresholds, reviewer decisions, and audit coverage for every review action.
+The schema supports configurable fraud rules. Device/IP velocity, disposable email, promotional code, file hash, referral abuse, and per-competition threshold configuration remain to be implemented.

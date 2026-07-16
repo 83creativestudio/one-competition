@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using OneCompetitions.Application.Auditing;
 using OneCompetitions.Application.Auth;
+using OneCompetitions.Application.Billing;
 using OneCompetitions.Application.Domains;
 using OneCompetitions.Application.Tenants;
 using OneCompetitions.Contracts.Domains;
@@ -18,6 +19,8 @@ public sealed class TenantDomainService(
     ITenantContext tenantContext,
     UserManager<ApplicationUser> userManager,
     IDomainVerificationProvider verificationProvider,
+    ISslProvisioningProvider sslProvisioningProvider,
+    IPlanLimitService planLimits,
     IAuditLogger auditLogger) : ITenantDomainService
 {
     private static readonly Regex HostnamePattern = new(
@@ -27,6 +30,8 @@ public sealed class TenantDomainService(
     public async Task<IReadOnlyList<TenantDomainResponse>> ListAsync(Guid userId, CancellationToken cancellationToken)
     {
         await EnsureTenantManagerAsync(userId, cancellationToken);
+        await planLimits.EnsureAllowedAsync(tenantContext.TenantId, "AllowCustomDomain", 1, cancellationToken);
+        await planLimits.EnsureAllowedAsync(tenantContext.TenantId, "MaximumCustomDomains", 1, cancellationToken);
 
         return await dbContext.TenantDomains
             .OrderByDescending(x => x.IsPrimary)
@@ -107,9 +112,15 @@ public sealed class TenantDomainService(
 
         if (result.IsVerified)
         {
-            domain.Status = TenantDomainStatus.Active;
+            domain.Status = TenantDomainStatus.ProvisioningSsl;
             domain.VerifiedAt = DateTimeOffset.UtcNow;
             domain.FailureReason = null;
+            var ssl = await sslProvisioningProvider.ProvisionAsync(domain.Hostname, cancellationToken);
+            domain.SslStatus = ssl.IsProvisioned ? "Active" : "Pending";
+            domain.CertificateExpiresAt = ssl.CertificateExpiresAt;
+            domain.FailureReason = ssl.FailureReason;
+            domain.Status = ssl.IsProvisioned ? TenantDomainStatus.Active : TenantDomainStatus.ProvisioningSsl;
+            if (ssl.IsProvisioned) domain.SslProvisionedAt = DateTimeOffset.UtcNow;
         }
         else
         {
@@ -231,6 +242,9 @@ public sealed class TenantDomainService(
             domain.ExpectedDnsTarget,
             domain.VerifiedAt,
             domain.LastCheckedAt,
+            domain.SslStatus,
+            domain.SslProvisionedAt,
+            domain.CertificateExpiresAt,
             domain.FailureReason,
             domain.CreatedAt,
             domain.UpdatedAt);

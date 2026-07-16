@@ -1,5 +1,7 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using Microsoft.Extensions.DependencyInjection;
+using OneCompetitions.Application.Jobs;
 using OneCompetitions.Contracts.Auth;
 using OneCompetitions.Contracts.Campaigns;
 using OneCompetitions.Contracts.Competitions;
@@ -89,7 +91,16 @@ public sealed class MvpWorkflowTests : IClassFixture<TestApplicationFactory>
         var exportResponse = await owner.PostAsJsonAsync($"/api/competitions/{competition.Id}/exports", new CreateExportRequest("Entries", "Csv"));
         exportResponse.EnsureSuccessStatusCode();
         var export = await exportResponse.Content.ReadFromJsonAsync<ExportJobResponse>() ?? throw new InvalidOperationException("Missing export.");
-        Assert.Equal("Completed", export.Status);
+        Assert.Equal("Pending", export.Status);
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<IPlatformJobProcessor>().RunOnceAsync(CancellationToken.None);
+        }
+        var exports = await owner.GetFromJsonAsync<List<ExportJobResponse>>($"/api/competitions/{competition.Id}/exports");
+        Assert.Equal("Completed", exports!.Single(x => x.Id == export.Id).Status);
+        var verification = await publicClient.GetFromJsonAsync<DrawVerificationResponse>($"/api/public/draws/{draw.DrawReference}/verification");
+        Assert.NotNull(verification);
+        Assert.True(verification!.CertificateValid);
     }
 
     private async Task<CompetitionResponse> CreateCompetitionAsync(HttpClient client)

@@ -1,6 +1,9 @@
 using System.Text;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.IdentityModel.Tokens;
 using OneCompetitions.Api.Middleware;
 using OneCompetitions.Application.Auth;
@@ -27,7 +30,30 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddProblemDetails();
 builder.Services.AddHealthChecks();
-builder.Services.AddInfrastructure(builder.Configuration);
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions { PermitLimit = 120, Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true }));
+});
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost;
+    options.ForwardLimit = 1;
+    options.KnownIPNetworks.Clear();
+    options.KnownProxies.Clear();
+    foreach (var value in (builder.Configuration["FORWARDED_HEADERS_KNOWN_NETWORKS"] ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        options.KnownIPNetworks.Add(System.Net.IPNetwork.Parse(value));
+    foreach (var value in (builder.Configuration["FORWARDED_HEADERS_KNOWN_PROXIES"] ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        options.KnownProxies.Add(System.Net.IPAddress.Parse(value));
+});
+if (!builder.Environment.IsDevelopment() && !builder.Environment.IsEnvironment("Testing")
+    && string.IsNullOrWhiteSpace(builder.Configuration["FORWARDED_HEADERS_KNOWN_NETWORKS"])
+    && string.IsNullOrWhiteSpace(builder.Configuration["FORWARDED_HEADERS_KNOWN_PROXIES"]))
+    throw new InvalidOperationException("A trusted reverse proxy or network must be configured for forwarded headers in production.");
+builder.Services.AddInfrastructure(builder.Configuration, builder.Environment);
 
 var signingKey = builder.Configuration["JWT_SIGNING_KEY"]
     ?? builder.Configuration["Jwt:SigningKey"]
@@ -103,6 +129,7 @@ builder.Services.AddOpenTelemetry()
 
 var app = builder.Build();
 
+app.UseForwardedHeaders();
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseMiddleware<SecurityHeadersMiddleware>();
@@ -115,15 +142,17 @@ if (app.Environment.IsDevelopment())
 
 if (!app.Environment.IsDevelopment() && !app.Environment.IsEnvironment("Testing"))
 {
+    app.UseHsts();
     app.UseHttpsRedirection();
 }
 
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseMiddleware<TenantResolutionMiddleware>();
 app.UseAuthorization();
 
-app.MapHealthChecks("/health/live").AllowAnonymous();
-app.MapHealthChecks("/health/ready").AllowAnonymous();
+app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false }).AllowAnonymous();
+app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") }).AllowAnonymous();
 app.MapControllers();
 
 if (app.Environment.IsDevelopment())

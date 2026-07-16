@@ -1,22 +1,9 @@
 # Domain Routing
 
-Stage 2 includes the `TenantDomain` data model, tenant dashboard APIs, development DNS verification, and middleware support for active custom-domain records.
+Tenant resolution order is verified custom domain, platform subdomain, authenticated membership, then `/c/{tenantSlug}`. Unknown, deleted, or suspended hosts are rejected before controllers execute.
 
-Supported foundation routing:
+Supported records are platform paths/subdomains and custom subdomain, root, or `www` domains. Custom onboarding creates a random verification token and expects `one-competitions-verify={token}` at the hostname or `_one-competitions.{hostname}`.
 
-- `https://competitions.local/c/one-digital`
-- `https://one-digital.competitions.local`
-- Active `TenantDomain` records for future custom domains.
+Development verification accepts controlled local hostnames and cannot run outside Development/Testing. Production uses live TXT lookup and an idempotent Cloudflare Custom Hostnames provider that queries existing hostname/SSL state before provisioning. The worker retries pending/error domains and rechecks certificates approaching expiry.
 
-Development seed data creates platform subdomain records for example tenants.
-
-Implemented dashboard endpoints:
-
-- `GET /api/domains`
-- `POST /api/domains`
-- `GET /api/domains/{id}`
-- `POST /api/domains/{id}/verify`
-- `POST /api/domains/{id}/set-primary`
-- `DELETE /api/domains/{id}`
-
-The first verification provider is intentionally development-only. It verifies `.test`, `.local`, or hostnames containing `verified` and throws if used outside Development or Testing. Real DNS and SSL providers remain deferred.
+Nginx preserves `Host` and forwarded headers. Production accepts forwarded values only from explicitly configured proxy networks/addresses.

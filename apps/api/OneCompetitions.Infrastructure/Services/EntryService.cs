@@ -4,7 +4,9 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using OneCompetitions.Application.Auditing;
 using OneCompetitions.Application.Entries;
+using OneCompetitions.Application.Notifications;
 using OneCompetitions.Application.Tenants;
+using OneCompetitions.Application.Webhooks;
 using OneCompetitions.Contracts.Entries;
 using OneCompetitions.Domain.Competitions;
 using OneCompetitions.Domain.Consents;
@@ -20,7 +22,9 @@ public sealed class EntryService(
     AppDbContext dbContext,
     ITenantContext tenantContext,
     UserManager<ApplicationUser> userManager,
-    IAuditLogger auditLogger)
+    IAuditLogger auditLogger,
+    INotificationQueue notifications,
+    IWebhookService webhooks)
     : TenantScopedServiceBase(dbContext, tenantContext, userManager), IEntryService
 {
     public async Task<EntryResponse> SubmitAsync(string competitionSlug, SubmitEntryRequest request, string? ipAddress, string? userAgent, CancellationToken cancellationToken)
@@ -193,12 +197,20 @@ public sealed class EntryService(
         await DbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         await auditLogger.RecordAsync(new AuditRecord(TenantContext.TenantId, null, "Participant", "entry.submitted", "CompetitionEntry", entry.Id.ToString(), $"competition:{competition.Id}", Guid.NewGuid().ToString("N")), cancellationToken);
+        if (!string.IsNullOrWhiteSpace(participant.PrimaryEmail))
+        {
+            await notifications.QueueEmailAsync(TenantContext.TenantId, competition.Id,
+                new EmailMessage(participant.PrimaryEmail, "Competition entry received", $"Your entry reference is {entry.EntryReference}."), cancellationToken);
+        }
+        await webhooks.QueueEventAsync(TenantContext.TenantId, "entry.submitted", new { entry.EntryReference, entry.CompetitionId, entry.SubmittedAt }, cancellationToken);
         return ToResponse(entry);
     }
 
     public async Task<IReadOnlyList<EntryResponse>> ListAsync(Guid userId, Guid competitionId, CancellationToken cancellationToken)
     {
         await EnsureTenantMemberAsync(userId, cancellationToken);
+        if (DbContext.Database.IsSqlite())
+            return (await DbContext.CompetitionEntries.Where(x => x.CompetitionId == competitionId).ToListAsync(cancellationToken)).OrderByDescending(x => x.CreatedAt).Take(200).Select(ToResponse).ToList();
         return await DbContext.CompetitionEntries.Where(x => x.CompetitionId == competitionId).OrderByDescending(x => x.CreatedAt).Take(200).Select(x => ToResponse(x)).ToListAsync(cancellationToken);
     }
 

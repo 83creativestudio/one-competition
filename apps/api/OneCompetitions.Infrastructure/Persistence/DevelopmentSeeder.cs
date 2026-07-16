@@ -23,7 +23,10 @@ public static class DevelopmentSeeder
     {
         await using var scope = serviceProvider.CreateAsyncScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        await dbContext.Database.MigrateAsync(cancellationToken);
+        if (string.Equals(configuration["DATABASE_PROVIDER"], "sqlite", StringComparison.OrdinalIgnoreCase))
+            await dbContext.Database.EnsureCreatedAsync(cancellationToken);
+        else
+            await dbContext.Database.MigrateAsync(cancellationToken);
 
         var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
         foreach (var role in AppRoles.All)
@@ -180,7 +183,7 @@ public static class DevelopmentSeeder
                 Code = "starter",
                 MonthlyPrice = 49,
                 AnnualPrice = 490,
-                FeatureConfigurationJson = "{\"MaximumActiveCompetitions\":3,\"AllowCustomDomain\":true,\"AllowExports\":true}",
+                FeatureConfigurationJson = "{\"MaximumActiveCompetitions\":10,\"MaximumCustomDomains\":3,\"MaximumTeamMembers\":10,\"AllowCustomDomain\":true,\"AllowExports\":true,\"AllowDrawCertificate\":true,\"AllowWebhooks\":true}",
                 CreatedAt = DateTimeOffset.UtcNow,
                 UpdatedAt = DateTimeOffset.UtcNow
             });
