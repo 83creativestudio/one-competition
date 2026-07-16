@@ -1,0 +1,11 @@
+"use client";
+
+import Link from "next/link";
+import { useState } from "react";
+
+export default function MfaPage() {
+  const [form, setForm] = useState({ email: "", password: "", code: "" }); const [setup, setSetup] = useState<{ sharedKey: string; authenticatorUri: string }>(); const [message, setMessage] = useState("");
+  async function begin() { const response = await fetch("/api/backend/api/auth/mfa/setup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) }); if (response.ok) setSetup(await response.json()); else setMessage("Credentials could not be verified."); }
+  async function enable() { const response = await fetch("/api/backend/api/auth/mfa/enable", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) }); setMessage(response.ok ? "MFA enabled. Sign in with your authenticator code." : "The authenticator code is invalid."); }
+  return <main className="grid min-h-screen place-items-center bg-canvas px-5"><section className="w-full max-w-md border border-line bg-white p-7"><h1 className="text-2xl font-semibold">Authenticator setup</h1><div className="mt-6 grid gap-4"><label className="field"><span>Email</span><input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></label><label className="field"><span>Password</span><input type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} /></label><button className="secondary-button w-fit" onClick={begin}>Generate authenticator key</button>{setup && <div className="border border-line bg-neutral-50 p-4 text-sm"><div className="font-semibold">Shared key</div><code className="mt-2 block break-all">{setup.sharedKey}</code><a className="mt-3 block text-emerald-800 underline" href={setup.authenticatorUri}>Open authenticator app</a></div>}<label className="field"><span>Six-digit code</span><input inputMode="numeric" value={form.code} onChange={e => setForm({ ...form, code: e.target.value })} /></label><button className="command-button w-fit" disabled={!setup} onClick={enable}>Enable MFA</button>{message && <p className="text-sm">{message}</p>}<Link className="text-sm text-emerald-800 underline" href="/login">Return to sign in</Link></div></section></main>;
+}

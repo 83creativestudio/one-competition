@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using OneCompetitions.Application.Jobs;
 using OneCompetitions.Contracts.Auth;
@@ -10,6 +11,7 @@ using OneCompetitions.Contracts.Entries;
 using OneCompetitions.Contracts.Exports;
 using OneCompetitions.Contracts.Qr;
 using OneCompetitions.Contracts.Winners;
+using OneCompetitions.Infrastructure.Persistence;
 
 namespace OneCompetitions.Api.IntegrationTests;
 
@@ -87,6 +89,14 @@ public sealed class MvpWorkflowTests : IClassFixture<TestApplicationFactory>
         var winners = await owner.GetFromJsonAsync<List<WinnerClaimResponse>>($"/api/competitions/{competition.Id}/winners");
         Assert.NotNull(winners);
         Assert.Equal(2, winners!.Count);
+        var contact = await owner.PostAsJsonAsync($"/api/competitions/{competition.Id}/winners/{winners[0].Id}/contact", new WinnerActionRequest("Initial winner notification", "Email"));
+        contact.EnsureSuccessStatusCode();
+        await using (var notificationScope = _factory.Services.CreateAsyncScope())
+        {
+            var db = notificationScope.ServiceProvider.GetRequiredService<AppDbContext>();
+            Assert.True(await db.NotificationMessages.IgnoreQueryFilters().AnyAsync(x => x.CompetitionId == competition.Id
+                && x.Channel == "Email" && x.Subject == "You have been selected as a competition winner"));
+        }
 
         var exportResponse = await owner.PostAsJsonAsync($"/api/competitions/{competition.Id}/exports", new CreateExportRequest("Entries", "Csv"));
         exportResponse.EnsureSuccessStatusCode();
@@ -131,7 +141,8 @@ public sealed class MvpWorkflowTests : IClassFixture<TestApplicationFactory>
             Guid.NewGuid().ToString("N"),
             sourceId,
             [new EntryAnswerRequest("email", email)],
-            []));
+            [],
+            CaptchaToken: "test-pass"));
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<EntryResponse>() ?? throw new InvalidOperationException("Missing entry.");
     }

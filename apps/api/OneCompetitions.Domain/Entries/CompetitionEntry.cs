@@ -23,6 +23,7 @@ public sealed class CompetitionEntry : TenantScopedEntity
     public string? IpHash { get; set; }
     public string? UserAgentHash { get; set; }
     public string? DeviceFingerprintHash { get; set; }
+    public string? IdempotencyKeyHash { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 }

@@ -36,6 +36,59 @@ public sealed class AuthController(IAuthService authService) : ControllerBase
         return NoContent();
     }
 
+    [HttpPost("forgot-password")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ForgotPassword(ForgotPasswordRequest request, CancellationToken cancellationToken)
+    {
+        await authService.RequestPasswordResetAsync(request, cancellationToken);
+        return Accepted();
+    }
+
+    [HttpPost("reset-password")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ResetPassword(ResetPasswordRequest request, CancellationToken cancellationToken)
+    {
+        await authService.ResetPasswordAsync(request, cancellationToken);
+        return NoContent();
+    }
+
+    [HttpPost("verify-email")]
+    [AllowAnonymous]
+    public async Task<IActionResult> VerifyEmail(VerifyEmailRequest request, CancellationToken cancellationToken)
+    {
+        await authService.VerifyEmailAsync(request, cancellationToken);
+        return NoContent();
+    }
+
+    [HttpPost("mfa/setup")]
+    [AllowAnonymous]
+    public async Task<ActionResult<MfaSetupResponse>> MfaSetup(MfaSetupRequest request, CancellationToken cancellationToken) =>
+        Ok(await authService.BeginMfaSetupAsync(request, cancellationToken));
+
+    [HttpPost("mfa/enable")]
+    [AllowAnonymous]
+    public async Task<IActionResult> MfaEnable(MfaEnableRequest request, CancellationToken cancellationToken)
+    {
+        await authService.EnableMfaAsync(request, cancellationToken);
+        return NoContent();
+    }
+
+    [HttpPost("mfa/disable")]
+    [Authorize]
+    public async Task<IActionResult> MfaDisable(MfaDisableRequest request, CancellationToken cancellationToken)
+    {
+        await authService.DisableMfaAsync(User.GetUserId(), request, cancellationToken);
+        return NoContent();
+    }
+
+    [HttpPost("invitations/accept")]
+    [AllowAnonymous]
+    public async Task<IActionResult> AcceptInvitation(AcceptInvitationRequest request, CancellationToken cancellationToken)
+    {
+        await authService.AcceptInvitationAsync(request, cancellationToken);
+        return NoContent();
+    }
+
     [HttpGet("sessions")]
     [Authorize]
     public async Task<ActionResult<IReadOnlyList<SessionResponse>>> Sessions(CancellationToken cancellationToken)

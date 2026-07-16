@@ -7,13 +7,24 @@ Authentication:
 - `POST /api/auth/login`
 - `POST /api/auth/refresh`
 - `POST /api/auth/logout`
+- `POST /api/auth/forgot-password`
+- `POST /api/auth/reset-password`
+- `POST /api/auth/verify-email`
+- `POST /api/auth/mfa/setup`
+- `POST /api/auth/mfa/enable`
+- `POST /api/auth/mfa/disable`
+- `POST /api/auth/invitations/accept`
 - `GET /api/auth/sessions`
 - `DELETE /api/auth/sessions/{id}`
 
 Tenants:
 
 - `GET /api/tenants/current`
+- `PATCH /api/tenants/current`
 - `GET /api/tenants/current/users`
+- `POST /api/tenants/current/users/invite`
+- `PATCH /api/tenants/current/users/{membershipId}`
+- `DELETE /api/tenants/current/users/{membershipId}`
 
 Domains:
 
@@ -49,6 +60,8 @@ Competitions:
 - `DELETE /api/competitions/{id}/fields/{fieldId}`
 - `POST /api/competitions/{id}/fields/reorder`
 - `POST /api/competitions/{id}/rules`
+- `GET /api/competitions/{id}/consents`
+- `POST /api/competitions/{id}/consents`
 - `PUT /api/competitions/{id}/page`
 
 Public:
@@ -56,6 +69,10 @@ Public:
 - `GET /api/public/competitions/{slug}`
 - `POST /api/public/competitions/{slug}/entries`
 - `GET /api/public/entries/{reference}/status`
+- `POST /api/public/entries/{reference}/verify-email`
+- `POST /api/public/entries/{reference}/verify-phone`
+- `POST /api/public/privacy/requests`
+- `POST /api/public/privacy/requests/{reference}/complete`
 
 Entries:
 
@@ -65,6 +82,11 @@ Entries:
 - `POST /api/competitions/{id}/entries/{entryId}/reject`
 - `POST /api/competitions/{id}/entries/{entryId}/mark-duplicate`
 - `POST /api/competitions/{id}/entries/{entryId}/disqualify`
+- `GET /api/fraud-rules`
+- `POST /api/fraud-rules`
+- `PATCH /api/fraud-rules/{ruleId}`
+- `DELETE /api/fraud-rules/{ruleId}`
+- `GET /api/competitions/{id}/fraud-summary`
 
 Campaigns, QR, and analytics:
 
@@ -103,12 +125,22 @@ Assets, webhooks, billing, and verification:
 - `DELETE /api/webhooks/{endpointId}`
 - `GET /api/billing`
 - `POST /api/billing/checkout`
+- `POST /api/billing/portal`
+- `POST /api/billing/cancel`
 - `POST /api/billing/stripe/webhook`
 - `GET /api/public/draws/{drawReference}/verification`
 
 Platform:
 
 - `GET /api/platform/tenants`
+- `GET /api/platform/tenants/{tenantId}`
+- `PATCH /api/platform/tenants/{tenantId}/status`
+- `GET /api/platform/domains`
+- `GET|POST|PATCH /api/platform/features[/{id}]`
+- `GET|POST|PATCH /api/platform/plans[/{id}]`
+- `GET|POST|PATCH /api/platform/resellers[/{id}]`
+- `GET /api/platform/audit`
+- `GET /api/audit`
 
 Health:
 

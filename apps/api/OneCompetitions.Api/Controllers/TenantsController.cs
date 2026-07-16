@@ -24,4 +24,23 @@ public sealed class TenantsController(ITenantAccessService tenants) : Controller
     {
         return Ok(await tenants.GetCurrentTenantUsersAsync(User.GetUserId(), cancellationToken));
     }
+
+    [HttpPatch("current")]
+    public async Task<ActionResult<TenantResponse>> Update(UpdateTenantRequest request, CancellationToken cancellationToken) =>
+        Ok(await tenants.UpdateCurrentTenantAsync(User.GetUserId(), request, cancellationToken));
+
+    [HttpPost("current/users/invite")]
+    public async Task<ActionResult<TenantUserResponse>> Invite(InviteTenantUserRequest request, CancellationToken cancellationToken) =>
+        Ok(await tenants.InviteUserAsync(User.GetUserId(), request, cancellationToken));
+
+    [HttpPatch("current/users/{membershipId:guid}")]
+    public async Task<ActionResult<TenantUserResponse>> UpdateUser(Guid membershipId, UpdateTenantUserRequest request, CancellationToken cancellationToken) =>
+        Ok(await tenants.UpdateUserAsync(User.GetUserId(), membershipId, request, cancellationToken));
+
+    [HttpDelete("current/users/{membershipId:guid}")]
+    public async Task<IActionResult> RemoveUser(Guid membershipId, CancellationToken cancellationToken)
+    {
+        await tenants.RemoveUserAsync(User.GetUserId(), membershipId, cancellationToken);
+        return NoContent();
+    }
 }

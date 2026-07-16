@@ -1,76 +1,20 @@
 "use client";
-import { useQuery } from "@tanstack/react-query";
+
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Plus } from "lucide-react";
 import { useParams } from "next/navigation";
-import {
-  ErrorState,
-  LoadingState,
-  PageHeading,
-  StatusBadge,
-} from "@/components/operations-ui";
+import { useState } from "react";
+import { ErrorState, LoadingState, PageHeading, StatusBadge } from "@/components/operations-ui";
 import { apiFetch } from "@/lib/api";
-import type { Entry } from "@/lib/contracts";
+import type { Entry, FraudRule, FraudSummary } from "@/lib/contracts";
+
+const ruleTypes = ["DuplicateEmail", "DuplicatePhone", "ExcessiveIp", "ExcessiveDevice", "DisposableEmail", "TooFast", "InvalidPhone", "SuspiciousVelocity"];
 export default function FraudPage() {
-  const id = useParams<{ id: string }>().id;
-  const query = useQuery({
-    queryKey: ["entries", id],
-    queryFn: () => apiFetch<Entry[]>(`api/competitions/${id}/entries`),
-  });
-  const risks =
-    query.data?.filter(
-      (x) =>
-        x.riskScore > 0 || ["Medium", "High", "Blocked"].includes(x.riskLevel),
-    ) ?? [];
-  return (
-    <main className="page">
-      <PageHeading
-        title="Fraud review"
-        description="Entries with duplicate or elevated risk signals requiring attention."
-      />
-      {query.isLoading ? (
-        <LoadingState />
-      ) : query.error ? (
-        <ErrorState error={query.error} />
-      ) : (
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Reference</th>
-                <th>Status</th>
-                <th>Eligibility</th>
-                <th>Risk level</th>
-                <th>Score</th>
-              </tr>
-            </thead>
-            <tbody>
-              {risks.map((x) => (
-                <tr key={x.id}>
-                  <td className="font-mono text-xs font-semibold">
-                    {x.entryReference}
-                  </td>
-                  <td>
-                    <StatusBadge value={x.status} />
-                  </td>
-                  <td>
-                    <StatusBadge value={x.eligibilityStatus} />
-                  </td>
-                  <td>
-                    <StatusBadge value={x.riskLevel} />
-                  </td>
-                  <td>{x.riskScore}</td>
-                </tr>
-              ))}
-              {!risks.length && (
-                <tr>
-                  <td colSpan={5}>
-                    <div className="empty-state">No elevated-risk entries.</div>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </main>
-  );
+  const id = useParams<{ id: string }>().id; const cache = useQueryClient(); const [form, setForm] = useState({ name: "Duplicate email", ruleType: "DuplicateEmail", configurationJson: "{}", scoreImpact: 40, action: "Review", isEnabled: true });
+  const entries = useQuery({ queryKey: ["entries", id], queryFn: () => apiFetch<Entry[]>(`api/competitions/${id}/entries`) });
+  const rules = useQuery({ queryKey: ["fraud-rules"], queryFn: () => apiFetch<FraudRule[]>("api/fraud-rules") });
+  const summary = useQuery({ queryKey: ["fraud-summary", id], queryFn: () => apiFetch<FraudSummary>(`api/competitions/${id}/fraud-summary`) });
+  const create = useMutation({ mutationFn: () => apiFetch<FraudRule>("api/fraud-rules", { method: "POST", body: JSON.stringify(form) }), onSuccess: () => cache.invalidateQueries({ queryKey: ["fraud-rules"] }) });
+  const risks = entries.data?.filter(x => x.riskScore > 0) ?? [];
+  return <main className="page"><PageHeading title="Fraud review" description="Configurable signals feed an auditable manual review queue." /><div className="mb-5 grid gap-3 sm:grid-cols-4">{[["Low", summary.data?.lowRisk], ["Medium", summary.data?.mediumRisk], ["High", summary.data?.highRisk], ["Blocked", summary.data?.blocked]].map(([label, value]) => <div className="panel p-4" key={label}><div className="text-xs font-semibold uppercase text-muted">{label}</div><div className="mt-2 text-2xl font-semibold">{value ?? 0}</div></div>)}</div><form className="panel mb-5 grid gap-4 p-5 md:grid-cols-5" onSubmit={e => { e.preventDefault(); create.mutate(); }}><label className="field"><span>Name</span><input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></label><label className="field"><span>Rule type</span><select value={form.ruleType} onChange={e => setForm({ ...form, ruleType: e.target.value })}>{ruleTypes.map(x => <option key={x}>{x}</option>)}</select></label><label className="field"><span>Score</span><input min="0" max="100" type="number" value={form.scoreImpact} onChange={e => setForm({ ...form, scoreImpact: Number(e.target.value) })} /></label><label className="field"><span>Action</span><select value={form.action} onChange={e => setForm({ ...form, action: e.target.value })}><option>Review</option><option>Flag</option><option>Block</option></select></label><button className="command-button self-end"><Plus size={16} />Add rule</button><label className="field md:col-span-5"><span>Configuration JSON</span><textarea value={form.configurationJson} onChange={e => setForm({ ...form, configurationJson: e.target.value })} /></label></form>{rules.isLoading || entries.isLoading ? <LoadingState /> : rules.error || entries.error ? <ErrorState error={rules.error ?? entries.error} /> : <><div className="table-wrap mb-5"><table className="data-table"><thead><tr><th>Rule</th><th>Type</th><th>Score</th><th>Action</th><th>Status</th></tr></thead><tbody>{rules.data?.map(x => <tr key={x.id}><td className="font-semibold">{x.name}</td><td>{x.ruleType}</td><td>{x.scoreImpact}</td><td>{x.action}</td><td><StatusBadge value={x.isEnabled ? "Enabled" : "Disabled"} /></td></tr>)}</tbody></table></div><div className="table-wrap"><table className="data-table"><thead><tr><th>Reference</th><th>Status</th><th>Eligibility</th><th>Risk</th><th>Score</th></tr></thead><tbody>{risks.map(x => <tr key={x.id}><td className="font-mono text-xs font-semibold">{x.entryReference}</td><td><StatusBadge value={x.status} /></td><td><StatusBadge value={x.eligibilityStatus} /></td><td><StatusBadge value={x.riskLevel} /></td><td>{x.riskScore}</td></tr>)}</tbody></table>{!risks.length && <div className="empty-state">No elevated-risk entries.</div>}</div></>}</main>;
 }

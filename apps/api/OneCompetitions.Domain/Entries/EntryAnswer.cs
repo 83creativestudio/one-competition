@@ -11,5 +11,6 @@ public sealed class EntryAnswer
     public DateOnly? DateValue { get; set; }
     public bool? BooleanValue { get; set; }
     public string? JsonValue { get; set; }
+    public string? EncryptedValue { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
 }

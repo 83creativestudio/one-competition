@@ -10,4 +10,8 @@ public sealed record CreateCompetitionRequest(
     int PerParticipantEntryLimit,
     int NumberOfWinners,
     int NumberOfReserveWinners,
-    bool RequiresManualApproval);
+    bool RequiresManualApproval,
+    int? MinimumAge = null,
+    IReadOnlyList<string>? AllowedCountryCodes = null,
+    bool RequiresEmailVerification = false,
+    bool RequiresPhoneVerification = false);

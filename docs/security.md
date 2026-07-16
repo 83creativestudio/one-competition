@@ -3,6 +3,7 @@
 Implemented controls include:
 
 - ASP.NET Core Identity hashing, account lockout, confirmed email, JWT validation, rotating refresh sessions, and revocation.
+- Expiring one-time invitations/password reset, mandatory TOTP MFA for privileged production accounts, and session revocation after credential/security changes.
 - Explicit platform/tenant policies, service-level membership checks, tenant middleware, EF query filters, and cross-tenant tests.
 - HTTPS/HSTS in production, CSP and secure headers, fixed-window rate limiting, strict same-origin BFF mutations, and HTTP-only cookies.
 - One-hop forwarded headers restricted to configured proxy addresses/networks.
@@ -13,5 +14,7 @@ Implemented controls include:
 - Public-network validation when webhook endpoints are created and delivered to reduce SSRF and DNS-rebinding exposure.
 - Redis locks for draw execution and worker cycles; immutable snapshots and replay protection for completed draws.
 - Stripe webhook signature validation and backend subscription/plan enforcement.
+- Turnstile validation, age/country eligibility, hashed entry verification codes, attempt limits, and AES-GCM sensitive-answer encryption.
+- Email-authorized participant export/deletion/marketing-withdrawal requests and audited retention cleanup.
 
 Never log passwords, provider secrets, verification codes, payment data, or normal unmasked participant PII. Production keys and credentials belong in a managed secret store.

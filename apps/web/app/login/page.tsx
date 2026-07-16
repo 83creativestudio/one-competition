@@ -5,9 +5,10 @@ import { ArrowRight, LockKeyhole } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
+import Link from "next/link";
 import { z } from "zod";
 
-const schema = z.object({ email: z.string().email(), password: z.string().min(12) });
+const schema = z.object({ email: z.string().email(), password: z.string().min(12), twoFactorCode: z.string().optional() });
 type Values = z.infer<typeof schema>;
 
 export default function LoginPage() {
@@ -40,10 +41,12 @@ export default function LoginPage() {
           {errors.email && <p className="field-error">Enter a valid email.</p>}
           <label className="field"><span>Password</span><input autoComplete="current-password" type="password" {...register("password")} /></label>
           {errors.password && <p className="field-error">Password must contain at least 12 characters.</p>}
+          <label className="field"><span>Authenticator code</span><input autoComplete="one-time-code" inputMode="numeric" maxLength={8} {...register("twoFactorCode")} /></label>
           {error && <p className="border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{error}</p>}
           <button className="command-button w-full justify-center" disabled={isSubmitting} type="submit">
             {isSubmitting ? "Signing in" : "Sign in"}<ArrowRight size={16} />
           </button>
+          <div className="flex justify-between text-sm"><Link className="text-emerald-800 underline" href="/account/password">Reset password</Link><Link className="text-emerald-800 underline" href="/account/mfa">Set up MFA</Link></div>
         </form>
       </section>
     </main>

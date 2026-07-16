@@ -11,13 +11,17 @@ using OneCompetitions.Application.Billing;
 using OneCompetitions.Application.Branding;
 using OneCompetitions.Application.Campaigns;
 using OneCompetitions.Application.Competitions;
+using OneCompetitions.Application.Consents;
 using OneCompetitions.Application.Domains;
 using OneCompetitions.Application.Draws;
 using OneCompetitions.Application.Entries;
 using OneCompetitions.Application.Exports;
+using OneCompetitions.Application.Fraud;
 using OneCompetitions.Application.Jobs;
 using OneCompetitions.Application.Locking;
 using OneCompetitions.Application.Notifications;
+using OneCompetitions.Application.Privacy;
+using OneCompetitions.Application.Platform;
 using OneCompetitions.Application.Storage;
 using OneCompetitions.Application.Tenants;
 using OneCompetitions.Application.Winners;
@@ -74,7 +78,11 @@ public static class DependencyInjection
         services.AddScoped<ITenantDomainService, TenantDomainService>();
         services.AddScoped<IBrandProfileService, BrandProfileService>();
         services.AddScoped<ICompetitionService, CompetitionService>();
+        services.AddScoped<IConsentService, ConsentService>();
         services.AddScoped<IEntryService, EntryService>();
+        services.AddScoped<IFraudService, FraudService>();
+        services.AddScoped<IPrivacyService, PrivacyService>();
+        services.AddScoped<IPlatformAdministrationService, PlatformAdministrationService>();
         services.AddScoped<ICampaignService, CampaignService>();
         services.AddScoped<IDrawService, DrawService>();
         services.AddScoped<IWinnerService, WinnerService>();
@@ -91,6 +99,7 @@ public static class DependencyInjection
         services.AddHttpClient();
         services.AddHttpClient<HttpVirusScanner>();
         services.AddHttpClient<HttpSmsProvider>();
+        services.AddHttpClient<TurnstileCaptchaProvider>();
         services.AddHttpClient<CloudflareSslProvisioningProvider>();
         services.AddHttpClient("webhooks", client => client.Timeout = TimeSpan.FromSeconds(15));
 
@@ -98,6 +107,7 @@ public static class DependencyInjection
         RegisterDomainProviders(services, configuration, isDevelopment);
         RegisterStorage(services, configuration, isDevelopment);
         RegisterMessaging(services, configuration, isDevelopment);
+        RegisterCaptcha(services, configuration, isDevelopment);
         RegisterLocks(services, configuration, isDevelopment);
         var healthChecks = services.AddHealthChecks()
             .AddCheck<DatabaseHealthCheck>("database", tags: ["ready"])
@@ -198,5 +208,18 @@ public static class DependencyInjection
         var connection = configuration["REDIS_CONNECTION_STRING"] ?? throw new InvalidOperationException("REDIS_CONNECTION_STRING is required.");
         services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(connection));
         services.AddSingleton<IDistributedLockProvider, RedisDistributedLockProvider>();
+    }
+
+    private static void RegisterCaptcha(IServiceCollection services, IConfiguration configuration, bool isDevelopment)
+    {
+        var provider = configuration["CAPTCHA_PROVIDER"] ?? (isDevelopment ? "development" : "turnstile");
+        if (provider.Equals("development", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!isDevelopment) throw new InvalidOperationException("Development CAPTCHA cannot run outside development or testing.");
+            services.AddScoped<ICaptchaProvider, DevelopmentCaptchaProvider>();
+        }
+        else if (provider.Equals("turnstile", StringComparison.OrdinalIgnoreCase))
+            services.AddScoped<ICaptchaProvider>(x => x.GetRequiredService<TurnstileCaptchaProvider>());
+        else throw new InvalidOperationException($"Unsupported CAPTCHA_PROVIDER '{provider}'.");
     }
 }

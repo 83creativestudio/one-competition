@@ -22,6 +22,8 @@ public sealed class Competition : TenantScopedEntity
     public int NumberOfWinners { get; set; } = 1;
     public int NumberOfReserveWinners { get; set; }
     public string EligibilityMode { get; set; } = "Standard";
+    public int? MinimumAge { get; set; }
+    public string AllowedCountryCodesJson { get; set; } = "[]";
     public bool RequiresEmailVerification { get; set; }
     public bool RequiresPhoneVerification { get; set; }
     public bool RequiresManualApproval { get; set; } = true;

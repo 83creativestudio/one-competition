@@ -11,5 +11,10 @@ public sealed record PublicCompetitionResponse(
     string Status,
     DateTimeOffset StartsAt,
     DateTimeOffset EndsAt,
+    int? MinimumAge,
+    IReadOnlyList<string> AllowedCountryCodes,
+    bool RequiresEmailVerification,
+    bool RequiresPhoneVerification,
     IReadOnlyList<CompetitionFieldResponse> Fields,
+    IReadOnlyList<PublicConsentResponse> Consents,
     CompetitionPageResponse? Page);

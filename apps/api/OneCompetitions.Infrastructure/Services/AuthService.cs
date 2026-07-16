@@ -5,9 +5,11 @@ using System.Text;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 using Microsoft.IdentityModel.Tokens;
 using OneCompetitions.Application.Auditing;
 using OneCompetitions.Application.Auth;
+using OneCompetitions.Application.Notifications;
 using OneCompetitions.Contracts.Auth;
 using OneCompetitions.Domain.Tenants;
 using OneCompetitions.Infrastructure.Identity;
@@ -19,6 +21,8 @@ public sealed class AuthService(
     UserManager<ApplicationUser> userManager,
     AppDbContext dbContext,
     IConfiguration configuration,
+    IHostEnvironment environment,
+    INotificationQueue notifications,
     IAuditLogger auditLogger) : IAuthService
 {
     private static readonly TimeSpan AccessTokenLifetime = TimeSpan.FromMinutes(15);
@@ -35,6 +39,21 @@ public sealed class AuthService(
         if (!user.EmailConfirmed)
         {
             throw new UnauthorizedAccessException("Email verification is required.");
+        }
+
+        var privileged = await IsPrivilegedAsync(user, cancellationToken);
+        if (privileged && !user.TwoFactorEnabled && !environment.IsDevelopment() && !environment.IsEnvironment("Testing"))
+        {
+            throw new UnauthorizedAccessException("Multi-factor authentication enrollment is required for this account.");
+        }
+
+        if (user.TwoFactorEnabled)
+        {
+            if (string.IsNullOrWhiteSpace(request.TwoFactorCode)
+                || !await userManager.VerifyTwoFactorTokenAsync(user, TokenOptions.DefaultAuthenticatorProvider, NormalizeCode(request.TwoFactorCode)))
+            {
+                throw new UnauthorizedAccessException("A valid two-factor authentication code is required.");
+            }
         }
 
         var token = await IssueAsync(user, ipAddress, userAgent, cancellationToken);
@@ -65,6 +84,129 @@ public sealed class AuthService(
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return await IssueAsync(session.User, ipAddress, userAgent, cancellationToken);
+    }
+
+    public async Task RequestPasswordResetAsync(ForgotPasswordRequest request, CancellationToken cancellationToken)
+    {
+        var user = await userManager.FindByEmailAsync(request.Email.Trim());
+        if (user is null || !user.EmailConfirmed)
+        {
+            return;
+        }
+
+        // Guid.Empty is reserved for platform-scoped operational messages whose users have no tenant membership.
+        var tenantId = await FirstTenantIdAsync(user.Id, cancellationToken) ?? Guid.Empty;
+        var token = await userManager.GeneratePasswordResetTokenAsync(user);
+        await notifications.QueueEmailAsync(tenantId, null,
+            new EmailMessage(user.Email!, "Reset your ONE. Competitions password", $"Use this one-time password reset token within 24 hours:\n\n{token}"), cancellationToken);
+    }
+
+    public async Task ResetPasswordAsync(ResetPasswordRequest request, CancellationToken cancellationToken)
+    {
+        var user = await userManager.FindByEmailAsync(request.Email.Trim())
+            ?? throw new InvalidOperationException("The reset request is invalid or expired.");
+        var result = await userManager.ResetPasswordAsync(user, request.Token, request.NewPassword);
+        if (!result.Succeeded)
+        {
+            throw new InvalidOperationException(string.Join("; ", result.Errors.Select(x => x.Description)));
+        }
+
+        await RevokeAllSessionsAsync(user.Id, cancellationToken);
+    }
+
+    public async Task VerifyEmailAsync(VerifyEmailRequest request, CancellationToken cancellationToken)
+    {
+        var user = await userManager.FindByEmailAsync(request.Email.Trim())
+            ?? throw new InvalidOperationException("The verification request is invalid or expired.");
+        var result = await userManager.ConfirmEmailAsync(user, request.Token);
+        if (!result.Succeeded)
+        {
+            throw new InvalidOperationException("The verification request is invalid or expired.");
+        }
+    }
+
+    public async Task<MfaSetupResponse> BeginMfaSetupAsync(MfaSetupRequest request, CancellationToken cancellationToken)
+    {
+        var user = await ValidateCredentialsAsync(request.Email, request.Password);
+        var key = await userManager.GetAuthenticatorKeyAsync(user);
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            await userManager.ResetAuthenticatorKeyAsync(user);
+            key = await userManager.GetAuthenticatorKeyAsync(user);
+        }
+
+        var issuer = Uri.EscapeDataString(configuration["MFA_ISSUER"] ?? "ONE. Competitions");
+        var account = Uri.EscapeDataString(user.Email ?? user.UserName ?? user.Id.ToString());
+        return new MfaSetupResponse(key!, $"otpauth://totp/{issuer}:{account}?secret={key}&issuer={issuer}&digits=6");
+    }
+
+    public async Task EnableMfaAsync(MfaEnableRequest request, CancellationToken cancellationToken)
+    {
+        var user = await ValidateCredentialsAsync(request.Email, request.Password);
+        if (!await userManager.VerifyTwoFactorTokenAsync(user, TokenOptions.DefaultAuthenticatorProvider, NormalizeCode(request.Code)))
+        {
+            throw new InvalidOperationException("The authenticator code is invalid.");
+        }
+
+        await userManager.SetTwoFactorEnabledAsync(user, true);
+        await RevokeAllSessionsAsync(user.Id, cancellationToken);
+    }
+
+    public async Task DisableMfaAsync(Guid userId, MfaDisableRequest request, CancellationToken cancellationToken)
+    {
+        var user = await userManager.FindByIdAsync(userId.ToString()) ?? throw new UnauthorizedAccessException();
+        if (!await userManager.CheckPasswordAsync(user, request.Password)
+            || !await userManager.VerifyTwoFactorTokenAsync(user, TokenOptions.DefaultAuthenticatorProvider, NormalizeCode(request.Code)))
+        {
+            throw new UnauthorizedAccessException("Password or authenticator code is invalid.");
+        }
+
+        if (await IsPrivilegedAsync(user, cancellationToken) && !environment.IsDevelopment() && !environment.IsEnvironment("Testing"))
+        {
+            throw new InvalidOperationException("Multi-factor authentication cannot be disabled for privileged accounts.");
+        }
+
+        await userManager.SetTwoFactorEnabledAsync(user, false);
+        await userManager.ResetAuthenticatorKeyAsync(user);
+        await RevokeAllSessionsAsync(user.Id, cancellationToken);
+    }
+
+    public async Task AcceptInvitationAsync(AcceptInvitationRequest request, CancellationToken cancellationToken)
+    {
+        var tokenHash = Hash(request.Token);
+        var query = dbContext.TenantUsers.IgnoreQueryFilters()
+            .Where(x => x.Id == request.InvitationId && x.Status == TenantUserStatus.Invited
+                && x.InvitationTokenHash == tokenHash);
+        var membership = dbContext.Database.IsSqlite()
+            ? (await query.SingleOrDefaultAsync(cancellationToken) is { } sqliteMembership
+                && sqliteMembership.InvitationExpiresAt > DateTimeOffset.UtcNow ? sqliteMembership : null)
+            : await query.SingleOrDefaultAsync(x => x.InvitationExpiresAt > DateTimeOffset.UtcNow, cancellationToken);
+        if (membership is null)
+            throw new InvalidOperationException("The invitation is invalid or expired.");
+        var user = await userManager.FindByIdAsync(membership.UserId.ToString())
+            ?? throw new InvalidOperationException("The invitation user no longer exists.");
+
+        if (await userManager.HasPasswordAsync(user))
+        {
+            if (!await userManager.CheckPasswordAsync(user, request.Password))
+                throw new UnauthorizedAccessException("The account password is invalid.");
+        }
+        else
+        {
+            var passwordResult = await userManager.AddPasswordAsync(user, request.Password);
+            if (!passwordResult.Succeeded)
+                throw new InvalidOperationException(string.Join("; ", passwordResult.Errors.Select(x => x.Description)));
+        }
+
+        user.DisplayName = request.DisplayName.Trim();
+        user.EmailConfirmed = true;
+        user.UpdatedAt = DateTimeOffset.UtcNow;
+        membership.Status = TenantUserStatus.Active;
+        membership.AcceptedAt = DateTimeOffset.UtcNow;
+        membership.InvitationTokenHash = null;
+        membership.InvitationExpiresAt = null;
+        membership.UpdatedAt = DateTimeOffset.UtcNow;
+        await dbContext.SaveChangesAsync(cancellationToken);
     }
 
     public async Task<IReadOnlyList<SessionResponse>> GetSessionsAsync(Guid userId, CancellationToken cancellationToken)
@@ -171,4 +313,33 @@ public sealed class AuthService(
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(value));
         return Convert.ToHexString(bytes).ToLowerInvariant();
     }
+
+    private async Task<ApplicationUser> ValidateCredentialsAsync(string email, string password)
+    {
+        var user = await userManager.FindByEmailAsync(email.Trim());
+        if (user is null || !await userManager.CheckPasswordAsync(user, password))
+            throw new UnauthorizedAccessException("Invalid email or password.");
+        return user;
+    }
+
+    private async Task<bool> IsPrivilegedAsync(ApplicationUser user, CancellationToken cancellationToken)
+    {
+        var roles = await userManager.GetRolesAsync(user);
+        if (roles.Any(AppRoles.PlatformRoles.Contains)) return true;
+        return await dbContext.TenantUsers.IgnoreQueryFilters().AnyAsync(x => x.UserId == user.Id
+            && x.Status == TenantUserStatus.Active
+            && (x.Role == TenantRole.TenantOwner || x.Role == TenantRole.TenantAdministrator), cancellationToken);
+    }
+
+    private async Task<Guid?> FirstTenantIdAsync(Guid userId, CancellationToken cancellationToken) =>
+        await dbContext.TenantUsers.IgnoreQueryFilters().Where(x => x.UserId == userId).Select(x => (Guid?)x.TenantId).FirstOrDefaultAsync(cancellationToken);
+
+    private async Task RevokeAllSessionsAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        var sessions = await dbContext.UserSessions.Where(x => x.UserId == userId && x.RevokedAt == null).ToListAsync(cancellationToken);
+        foreach (var session in sessions) session.RevokedAt = DateTimeOffset.UtcNow;
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private static string NormalizeCode(string value) => value.Replace(" ", string.Empty, StringComparison.Ordinal).Replace("-", string.Empty, StringComparison.Ordinal);
 }

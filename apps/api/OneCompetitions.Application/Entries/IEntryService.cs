@@ -8,5 +8,6 @@ public interface IEntryService
     Task<IReadOnlyList<EntryResponse>> ListAsync(Guid userId, Guid competitionId, CancellationToken cancellationToken);
     Task<EntryResponse?> GetAsync(Guid userId, Guid competitionId, Guid entryId, CancellationToken cancellationToken);
     Task<EntryResponse> ReviewAsync(Guid userId, Guid competitionId, Guid entryId, EntryReviewRequest request, CancellationToken cancellationToken);
+    Task<EntryResponse> VerifyAsync(string reference, string channel, VerifyEntryRequest request, CancellationToken cancellationToken);
     Task<EntryResponse?> GetPublicStatusAsync(string reference, CancellationToken cancellationToken);
 }

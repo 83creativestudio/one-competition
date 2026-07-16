@@ -1,5 +1,7 @@
 # Fraud Engine
 
-The MVP detects duplicate tenant/competition email and phone identities, records entry risk signals, computes a basic score/level, and exposes an auditable review queue. Reviewers may approve, reject, mark duplicate, or disqualify entries with reasons. Shared IP alone is not an automatic block.
+The rules engine evaluates duplicate email/phone, IP and device volume, one-minute submission velocity, disposable email domains, completion speed, and invalid phone patterns. Rules are tenant-configurable with JSON thresholds/domain lists, score impact, action, and enabled state. Signals retain evidence and feed risk levels and the auditable review queue.
 
-The schema supports configurable fraud rules. Device/IP velocity, disposable email, promotional code, file hash, referral abuse, and per-competition threshold configuration remain to be implemented.
+Reviewers may approve, reject, mark duplicate, or disqualify entries with reasons. Shared IP only contributes a configurable signal and never blocks by default. A rule blocks only when its explicit action is `Block`.
+
+Promotional-code reuse, uploaded-file hash matching, referral graph abuse, and external reputation providers remain tied to future competition modules.

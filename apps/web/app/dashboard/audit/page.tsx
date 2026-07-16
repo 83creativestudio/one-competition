@@ -1,3 +1,3 @@
-export default function AuditPage() {
-  return <main className="mx-auto max-w-6xl px-6 py-8"><h1 className="text-2xl font-semibold text-ink">Audit</h1><div className="mt-6 rounded-md border border-line bg-white p-5"><h2 className="font-semibold">Recent events</h2></div></main>;
-}
+import { AuditTable } from "@/components/audit-table";
+import { PageHeading } from "@/components/operations-ui";
+export default function AuditPage() { return <main className="page"><PageHeading title="Audit" description="Append-only tenant activity and security events." /><AuditTable endpoint="api/audit" queryKey="tenant-audit" /></main>; }

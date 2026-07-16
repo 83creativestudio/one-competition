@@ -1,9 +1,11 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using OneCompetitions.Application.Auditing;
 using OneCompetitions.Application.Entries;
+using OneCompetitions.Application.Fraud;
 using OneCompetitions.Application.Notifications;
 using OneCompetitions.Application.Tenants;
 using OneCompetitions.Application.Webhooks;
@@ -24,7 +26,10 @@ public sealed class EntryService(
     UserManager<ApplicationUser> userManager,
     IAuditLogger auditLogger,
     INotificationQueue notifications,
-    IWebhookService webhooks)
+    IWebhookService webhooks,
+    ICaptchaProvider captcha,
+    SecretProtector protector,
+    IFraudService fraud)
     : TenantScopedServiceBase(dbContext, tenantContext, userManager), IEntryService
 {
     public async Task<EntryResponse> SubmitAsync(string competitionSlug, SubmitEntryRequest request, string? ipAddress, string? userAgent, CancellationToken cancellationToken)
@@ -33,6 +38,9 @@ public sealed class EntryService(
         {
             throw new UnauthorizedAccessException("Tenant context is required.");
         }
+
+        if (!await captcha.ValidateAsync(request.CaptchaToken, ipAddress, cancellationToken))
+            throw new UnauthorizedAccessException("Anti-bot verification failed.");
 
         var competition = await DbContext.Competitions.SingleOrDefaultAsync(x => x.Slug == Normalize(competitionSlug), cancellationToken)
             ?? throw new InvalidOperationException("Competition was not found.");
@@ -43,10 +51,18 @@ public sealed class EntryService(
             throw new InvalidOperationException("Competition is not open for entries.");
         }
 
+        if (competition.RequiresEmailVerification && string.IsNullOrWhiteSpace(request.Email))
+            throw new InvalidOperationException("Email is required for this competition.");
+        if (competition.RequiresPhoneVerification && string.IsNullOrWhiteSpace(request.Phone))
+            throw new InvalidOperationException("Phone number is required for this competition.");
+        ValidateEligibility(competition, request, now);
+        if (competition.EntryLimit is not null && await DbContext.CompetitionEntries.CountAsync(x => x.CompetitionId == competition.Id, cancellationToken) >= competition.EntryLimit)
+            throw new InvalidOperationException("The competition entry limit has been reached.");
+
         if (!string.IsNullOrWhiteSpace(request.IdempotencyKey))
         {
             var existing = await DbContext.CompetitionEntries
-                .SingleOrDefaultAsync(x => x.CompetitionId == competition.Id && x.DeviceFingerprintHash == Hash(request.IdempotencyKey), cancellationToken);
+                .SingleOrDefaultAsync(x => x.CompetitionId == competition.Id && x.IdempotencyKeyHash == Hash(request.IdempotencyKey), cancellationToken);
             if (existing is not null)
             {
                 return ToResponse(existing);
@@ -91,23 +107,31 @@ public sealed class EntryService(
                 PrimaryPhone = phone,
                 FirstName = request.FirstName,
                 LastName = request.LastName,
+                DateOfBirth = request.DateOfBirth,
+                CountryCode = NormalizeCountry(request.CountryCode),
                 PreferredLanguage = string.IsNullOrWhiteSpace(request.PreferredLanguage) ? "en" : request.PreferredLanguage.Trim().ToLowerInvariant(),
                 CreatedAt = now,
                 UpdatedAt = now
             };
             DbContext.Participants.Add(participant);
         }
-
-        var riskScore = 0;
-        if (!string.IsNullOrEmpty(email) && await DbContext.CompetitionEntries.AnyAsync(x => x.CompetitionId == competition.Id && DbContext.Participants.Any(p => p.Id == x.ParticipantId && p.PrimaryEmail == email), cancellationToken))
+        else
         {
-            riskScore += 40;
+            participant.DateOfBirth ??= request.DateOfBirth;
+            participant.CountryCode ??= NormalizeCountry(request.CountryCode);
+            participant.UpdatedAt = now;
         }
 
-        if (!string.IsNullOrEmpty(phone) && await DbContext.CompetitionEntries.AnyAsync(x => x.CompetitionId == competition.Id && DbContext.Participants.Any(p => p.Id == x.ParticipantId && p.PrimaryPhone == phone), cancellationToken))
-        {
-            riskScore += 40;
-        }
+        if (await DbContext.CompetitionEntries.CountAsync(x => x.CompetitionId == competition.Id && x.ParticipantId == participant.Id, cancellationToken) >= competition.PerParticipantEntryLimit)
+            throw new InvalidOperationException("The participant entry limit has been reached.");
+
+        var ipHash = HashNullable(ipAddress);
+        var deviceHash = HashNullable(request.DeviceFingerprint);
+        var evaluation = await fraud.EvaluateAsync(new FraudEvaluationRequest(competition.Id, email, phone, ipHash, deviceHash, request.FormStartedAt, now), cancellationToken);
+        var riskScore = evaluation.Score;
+
+        var requiresVerification = competition.RequiresEmailVerification || competition.RequiresPhoneVerification;
+        var postVerificationStatus = competition.RequiresManualApproval || riskScore > 0 ? CompetitionEntryStatus.UnderReview : CompetitionEntryStatus.Approved;
 
         var entry = new CompetitionEntry
         {
@@ -116,15 +140,17 @@ public sealed class EntryService(
             CompetitionId = competition.Id,
             ParticipantId = participant.Id,
             EntryReference = await NextReferenceAsync(cancellationToken),
-            Status = competition.RequiresManualApproval || riskScore > 0 ? CompetitionEntryStatus.UnderReview : CompetitionEntryStatus.Approved,
-            EligibilityStatus = competition.RequiresManualApproval || riskScore > 0 ? EligibilityStatus.PendingReview : EligibilityStatus.Eligible,
+            Status = evaluation.ShouldBlock ? CompetitionEntryStatus.Rejected : competition.RequiresEmailVerification ? CompetitionEntryStatus.EmailVerificationPending
+                : competition.RequiresPhoneVerification ? CompetitionEntryStatus.PhoneVerificationPending : postVerificationStatus,
+            EligibilityStatus = evaluation.ShouldBlock ? EligibilityStatus.Ineligible : requiresVerification || competition.RequiresManualApproval || riskScore > 0 ? EligibilityStatus.PendingReview : EligibilityStatus.Eligible,
             RiskScore = riskScore,
-            RiskLevel = riskScore >= 80 ? RiskLevel.High : riskScore >= 40 ? RiskLevel.Medium : RiskLevel.Low,
+            RiskLevel = evaluation.ShouldBlock ? RiskLevel.Blocked : riskScore >= 80 ? RiskLevel.High : riskScore >= 40 ? RiskLevel.Medium : RiskLevel.Low,
             EntrySourceId = request.CampaignSourceId,
             SubmittedAt = now,
-            IpHash = HashNullable(ipAddress),
+            IpHash = ipHash,
             UserAgentHash = HashNullable(userAgent),
-            DeviceFingerprintHash = string.IsNullOrWhiteSpace(request.IdempotencyKey) ? null : Hash(request.IdempotencyKey),
+            DeviceFingerprintHash = deviceHash,
+            IdempotencyKeyHash = HashNullable(request.IdempotencyKey),
             CreatedAt = now,
             UpdatedAt = now
         };
@@ -138,14 +164,16 @@ public sealed class EntryService(
                 continue;
             }
 
-            DbContext.EntryAnswers.Add(new EntryAnswer
+            var entity = new EntryAnswer
             {
                 Id = Guid.NewGuid(),
                 EntryId = entry.Id,
                 CompetitionFieldId = field.Id,
-                StringValue = answer.Value,
                 CreatedAt = now
-            });
+            };
+            if (field.IsSensitive) entity.EncryptedValue = protector.Protect(answer.Value ?? string.Empty);
+            else entity.StringValue = answer.Value;
+            DbContext.EntryAnswers.Add(entity);
         }
 
         foreach (var consent in request.Consents)
@@ -171,15 +199,17 @@ public sealed class EntryService(
             });
         }
 
-        if (riskScore > 0)
+        foreach (var signal in evaluation.Signals)
         {
             DbContext.EntryRiskSignals.Add(new EntryRiskSignal
             {
                 Id = Guid.NewGuid(),
                 EntryId = entry.Id,
-                SignalType = "DuplicateContact",
-                ScoreImpact = riskScore,
-                Description = "Duplicate email or phone detected for this competition.",
+                RuleId = signal.RuleId,
+                SignalType = signal.SignalType,
+                ScoreImpact = signal.ScoreImpact,
+                Description = signal.Description,
+                EvidenceJson = signal.EvidenceJson,
                 CreatedAt = now
             });
         }
@@ -194,14 +224,34 @@ public sealed class EntryService(
             OccurredAt = now
         });
 
+        string? emailCode = null;
+        string? phoneCode = null;
+        if (competition.RequiresEmailVerification && !evaluation.ShouldBlock)
+        {
+            emailCode = GenerateCode();
+            AddVerification(entry, "Email", emailCode, now);
+        }
+        if (competition.RequiresPhoneVerification && !evaluation.ShouldBlock)
+        {
+            phoneCode = GenerateCode();
+            AddVerification(entry, "Phone", phoneCode, now);
+        }
+
         await DbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         await auditLogger.RecordAsync(new AuditRecord(TenantContext.TenantId, null, "Participant", "entry.submitted", "CompetitionEntry", entry.Id.ToString(), $"competition:{competition.Id}", Guid.NewGuid().ToString("N")), cancellationToken);
-        if (!string.IsNullOrWhiteSpace(participant.PrimaryEmail))
+        if (emailCode is not null && !string.IsNullOrWhiteSpace(participant.PrimaryEmail))
+        {
+            await notifications.QueueEmailAsync(TenantContext.TenantId, competition.Id,
+                new EmailMessage(participant.PrimaryEmail, "Verify your competition entry", $"Your verification code is {emailCode}. It expires in 15 minutes."), cancellationToken);
+        }
+        else if (!string.IsNullOrWhiteSpace(participant.PrimaryEmail))
         {
             await notifications.QueueEmailAsync(TenantContext.TenantId, competition.Id,
                 new EmailMessage(participant.PrimaryEmail, "Competition entry received", $"Your entry reference is {entry.EntryReference}."), cancellationToken);
         }
+        if (phoneCode is not null && !string.IsNullOrWhiteSpace(participant.PrimaryPhone))
+            await notifications.QueueSmsAsync(TenantContext.TenantId, competition.Id, new SmsMessage(participant.PrimaryPhone, $"ONE. Competitions verification code: {phoneCode}"), cancellationToken);
         await webhooks.QueueEventAsync(TenantContext.TenantId, "entry.submitted", new { entry.EntryReference, entry.CompetitionId, entry.SubmittedAt }, cancellationToken);
         return ToResponse(entry);
     }
@@ -261,6 +311,44 @@ public sealed class EntryService(
         return await DbContext.CompetitionEntries.Where(x => x.EntryReference == reference).Select(x => ToResponse(x)).SingleOrDefaultAsync(cancellationToken);
     }
 
+    public async Task<EntryResponse> VerifyAsync(string reference, string channel, VerifyEntryRequest request, CancellationToken cancellationToken)
+    {
+        if (!TenantContext.IsResolved) throw new UnauthorizedAccessException("Tenant context is required.");
+        var normalizedChannel = channel.Equals("email", StringComparison.OrdinalIgnoreCase) ? "Email"
+            : channel.Equals("phone", StringComparison.OrdinalIgnoreCase) ? "Phone"
+            : throw new InvalidOperationException("Verification channel is invalid.");
+        var entry = await DbContext.CompetitionEntries.SingleOrDefaultAsync(x => x.EntryReference == reference, cancellationToken)
+            ?? throw new InvalidOperationException("Entry was not found.");
+        var verification = await DbContext.EntryVerifications.SingleOrDefaultAsync(x => x.EntryId == entry.Id && x.Channel == normalizedChannel, cancellationToken)
+            ?? throw new InvalidOperationException("Verification request was not found.");
+        if (verification.VerifiedAt is not null) return ToResponse(entry);
+        if (verification.ExpiresAt <= DateTimeOffset.UtcNow || verification.AttemptCount >= 5)
+            throw new InvalidOperationException("Verification code is expired or locked.");
+        verification.AttemptCount += 1;
+        if (!CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(verification.TokenHash), Encoding.UTF8.GetBytes(Hash(request.Code.Trim()))))
+        {
+            await DbContext.SaveChangesAsync(cancellationToken);
+            throw new InvalidOperationException("Verification code is invalid.");
+        }
+
+        verification.VerifiedAt = DateTimeOffset.UtcNow;
+        var competition = await DbContext.Competitions.SingleAsync(x => x.Id == entry.CompetitionId, cancellationToken);
+        var pendingOther = await DbContext.EntryVerifications.AnyAsync(x => x.EntryId == entry.Id && x.Id != verification.Id && x.VerifiedAt == null, cancellationToken);
+        if (!pendingOther)
+        {
+            entry.VerifiedAt = DateTimeOffset.UtcNow;
+            entry.Status = competition.RequiresManualApproval || entry.RiskScore > 0 ? CompetitionEntryStatus.UnderReview : CompetitionEntryStatus.Approved;
+            entry.EligibilityStatus = entry.Status == CompetitionEntryStatus.Approved ? EligibilityStatus.Eligible : EligibilityStatus.PendingReview;
+            entry.ApprovedAt = entry.Status == CompetitionEntryStatus.Approved ? DateTimeOffset.UtcNow : null;
+        }
+        else if (normalizedChannel == "Email") entry.Status = CompetitionEntryStatus.PhoneVerificationPending;
+        entry.UpdatedAt = DateTimeOffset.UtcNow;
+        await DbContext.SaveChangesAsync(cancellationToken);
+        await auditLogger.RecordAsync(new AuditRecord(TenantContext.TenantId, null, "Participant", "entry.verified", "CompetitionEntry", entry.Id.ToString(), $"channel:{normalizedChannel}", Guid.NewGuid().ToString("N")), cancellationToken);
+        if (!pendingOther) await webhooks.QueueEventAsync(TenantContext.TenantId, "entry.verified", new { entry.EntryReference, entry.CompetitionId, entry.VerifiedAt }, cancellationToken);
+        return ToResponse(entry);
+    }
+
     private async Task<string> NextReferenceAsync(CancellationToken cancellationToken)
     {
         var count = await DbContext.CompetitionEntries.CountAsync(cancellationToken) + 1;
@@ -270,5 +358,27 @@ public sealed class EntryService(
     private static string? HashNullable(string? value) => string.IsNullOrWhiteSpace(value) ? null : Hash(value);
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
     private static string? Normalize(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim().ToLowerInvariant();
+    private static string? NormalizeCountry(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim().ToUpperInvariant();
+    private static string GenerateCode() => RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
+    private void AddVerification(CompetitionEntry entry, string channel, string code, DateTimeOffset now) => DbContext.EntryVerifications.Add(new EntryVerification
+    {
+        Id = Guid.NewGuid(), TenantId = TenantContext.TenantId, EntryId = entry.Id, Channel = channel,
+        TokenHash = Hash(code), ExpiresAt = now.AddMinutes(15), CreatedAt = now
+    });
+
+    private static void ValidateEligibility(Competition competition, SubmitEntryRequest request, DateTimeOffset now)
+    {
+        if (competition.MinimumAge is not null)
+        {
+            if (request.DateOfBirth is null) throw new InvalidOperationException("Date of birth is required for this competition.");
+            var today = DateOnly.FromDateTime(now.UtcDateTime);
+            var age = today.Year - request.DateOfBirth.Value.Year;
+            if (request.DateOfBirth.Value > today.AddYears(-age)) age--;
+            if (age < competition.MinimumAge) throw new InvalidOperationException("Participant does not meet the minimum age requirement.");
+        }
+        var countries = JsonSerializer.Deserialize<string[]>(competition.AllowedCountryCodesJson) ?? [];
+        if (countries.Length > 0 && (string.IsNullOrWhiteSpace(request.CountryCode) || !countries.Contains(request.CountryCode.Trim(), StringComparer.OrdinalIgnoreCase)))
+            throw new InvalidOperationException("Participant country is not eligible for this competition.");
+    }
     private static EntryResponse ToResponse(CompetitionEntry entry) => new(entry.Id, entry.CompetitionId, entry.EntryReference, entry.Status.ToString(), entry.EligibilityStatus.ToString(), entry.RiskScore, entry.RiskLevel.ToString(), entry.SubmittedAt, entry.RejectedReason);
 }

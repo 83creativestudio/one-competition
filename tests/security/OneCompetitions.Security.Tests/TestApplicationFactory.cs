@@ -63,6 +63,7 @@ public sealed class TestApplicationFactory : WebApplicationFactory<Program>
             db.Tenants.Add(tenant);
             await db.SaveChangesAsync();
         }
+        tenant = await db.Tenants.IgnoreQueryFilters().SingleAsync(x => x.Slug == "one-digital");
 
         var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
         if (await userManager.FindByEmailAsync("owner@one.local") is null)
@@ -86,6 +87,33 @@ public sealed class TestApplicationFactory : WebApplicationFactory<Program>
                 Status = TenantUserStatus.Active,
                 CreatedAt = DateTimeOffset.UtcNow,
                 UpdatedAt = DateTimeOffset.UtcNow
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var omega = await db.Tenants.IgnoreQueryFilters().SingleOrDefaultAsync(x => x.Slug == "omega-tv");
+        if (omega is null)
+        {
+            omega = new Tenant
+            {
+                Id = Guid.NewGuid(), Name = "Omega TV", LegalName = "Omega TV", Slug = "omega-tv",
+                Status = TenantStatus.Active, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow
+            };
+            db.Tenants.Add(omega);
+            await db.SaveChangesAsync();
+        }
+        if (await userManager.FindByEmailAsync("owner@omega.local") is null)
+        {
+            var omegaOwner = new ApplicationUser
+            {
+                Id = Guid.NewGuid(), UserName = "owner@omega.local", Email = "owner@omega.local", EmailConfirmed = true,
+                CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow
+            };
+            await userManager.CreateAsync(omegaOwner, "DevelopmentOnly!ChangeMe123");
+            db.TenantUsers.Add(new TenantUser
+            {
+                Id = Guid.NewGuid(), TenantId = omega.Id, UserId = omegaOwner.Id, Role = TenantRole.TenantOwner,
+                Status = TenantUserStatus.Active, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow
             });
             await db.SaveChangesAsync();
         }

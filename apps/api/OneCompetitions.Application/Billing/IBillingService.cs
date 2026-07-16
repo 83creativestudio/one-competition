@@ -6,6 +6,8 @@ public interface IBillingService
 {
     Task<BillingOverviewResponse> GetOverviewAsync(Guid userId, CancellationToken cancellationToken);
     Task<CheckoutSessionResponse> CreateCheckoutAsync(Guid userId, CreateCheckoutSessionRequest request, CancellationToken cancellationToken);
+    Task<BillingPortalResponse> CreatePortalAsync(Guid userId, CreateBillingPortalRequest request, CancellationToken cancellationToken);
+    Task CancelAsync(Guid userId, CancelSubscriptionRequest request, CancellationToken cancellationToken);
     Task HandleWebhookAsync(string payload, string signature, CancellationToken cancellationToken);
 }
 

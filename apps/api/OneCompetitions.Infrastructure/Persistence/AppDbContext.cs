@@ -32,6 +32,7 @@ public sealed class AppDbContext(
     : IdentityDbContext<ApplicationUser, IdentityRole<Guid>, Guid>(options)
 {
     public DbSet<Tenant> Tenants => Set<Tenant>();
+    public DbSet<Reseller> Resellers => Set<Reseller>();
     public DbSet<TenantUser> TenantUsers => Set<TenantUser>();
     public DbSet<TenantDomain> TenantDomains => Set<TenantDomain>();
     public DbSet<BrandProfile> BrandProfiles => Set<BrandProfile>();
@@ -44,6 +45,7 @@ public sealed class AppDbContext(
     public DbSet<ParticipantIdentity> ParticipantIdentities => Set<ParticipantIdentity>();
     public DbSet<CompetitionEntry> CompetitionEntries => Set<CompetitionEntry>();
     public DbSet<EntryAnswer> EntryAnswers => Set<EntryAnswer>();
+    public DbSet<EntryVerification> EntryVerifications => Set<EntryVerification>();
     public DbSet<ConsentDefinition> ConsentDefinitions => Set<ConsentDefinition>();
     public DbSet<ParticipantConsent> ParticipantConsents => Set<ParticipantConsent>();
     public DbSet<CampaignSource> CampaignSources => Set<CampaignSource>();
@@ -62,10 +64,12 @@ public sealed class AppDbContext(
     public DbSet<ExportJob> ExportJobs => Set<ExportJob>();
     public DbSet<Plan> Plans => Set<Plan>();
     public DbSet<TenantSubscription> TenantSubscriptions => Set<TenantSubscription>();
+    public DbSet<BillingWebhookEvent> BillingWebhookEvents => Set<BillingWebhookEvent>();
     public DbSet<FeatureFlag> FeatureFlags => Set<FeatureFlag>();
     public DbSet<TenantFeatureOverride> TenantFeatureOverrides => Set<TenantFeatureOverride>();
     public DbSet<Asset> Assets => Set<Asset>();
     public DbSet<DataRetentionPolicy> DataRetentionPolicies => Set<DataRetentionPolicy>();
+    public DbSet<PrivacyRequest> PrivacyRequests => Set<PrivacyRequest>();
     public DbSet<WebhookEndpoint> WebhookEndpoints => Set<WebhookEndpoint>();
     public DbSet<WebhookEvent> WebhookEvents => Set<WebhookEvent>();
     public DbSet<WebhookDelivery> WebhookDeliveries => Set<WebhookDelivery>();
@@ -85,6 +89,14 @@ public sealed class AppDbContext(
             entity.Property(x => x.Slug).HasMaxLength(120);
             entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(40);
             entity.HasQueryFilter(x => x.DeletedAt == null);
+        });
+
+        builder.Entity<Reseller>(entity =>
+        {
+            entity.HasIndex(x => x.Slug).IsUnique();
+            entity.Property(x => x.Name).HasMaxLength(200);
+            entity.Property(x => x.Slug).HasMaxLength(120);
+            entity.Property(x => x.Status).HasMaxLength(40);
         });
 
         builder.Entity<TenantUser>(entity =>
@@ -195,6 +207,7 @@ public sealed class AppDbContext(
         builder.Entity<CompetitionEntry>(entity =>
         {
             entity.HasIndex(x => new { x.TenantId, x.EntryReference }).IsUnique();
+            entity.HasIndex(x => new { x.CompetitionId, x.IdempotencyKeyHash }).IsUnique();
             entity.HasIndex(x => new { x.CompetitionId, x.ParticipantId });
             entity.Property(x => x.EntryReference).HasMaxLength(80);
             entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(60);
@@ -207,6 +220,14 @@ public sealed class AppDbContext(
         {
             entity.HasIndex(x => new { x.EntryId, x.CompetitionFieldId }).IsUnique();
             entity.HasOne(x => x.Entry).WithMany().HasForeignKey(x => x.EntryId);
+        });
+
+        builder.Entity<EntryVerification>(entity =>
+        {
+            entity.HasIndex(x => new { x.EntryId, x.Channel }).IsUnique();
+            entity.Property(x => x.Channel).HasMaxLength(20);
+            entity.Property(x => x.TokenHash).HasMaxLength(128);
+            entity.HasQueryFilter(x => !tenantContext.IsResolved || x.TenantId == tenantContext.TenantId);
         });
 
         builder.Entity<ConsentDefinition>(entity =>
@@ -347,6 +368,15 @@ public sealed class AppDbContext(
             entity.HasQueryFilter(x => !tenantContext.IsResolved || x.TenantId == tenantContext.TenantId);
         });
 
+        builder.Entity<BillingWebhookEvent>(entity =>
+        {
+            entity.HasIndex(x => new { x.Provider, x.ExternalEventId }).IsUnique();
+            entity.Property(x => x.Provider).HasMaxLength(40);
+            entity.Property(x => x.ExternalEventId).HasMaxLength(160);
+            entity.Property(x => x.EventType).HasMaxLength(100);
+            entity.HasQueryFilter(x => !tenantContext.IsResolved || x.TenantId == tenantContext.TenantId);
+        });
+
         builder.Entity<FeatureFlag>(entity =>
         {
             entity.HasIndex(x => x.Code).IsUnique();
@@ -373,6 +403,16 @@ public sealed class AppDbContext(
         builder.Entity<DataRetentionPolicy>(entity =>
         {
             entity.HasIndex(x => new { x.TenantId, x.CompetitionId }).IsUnique();
+            entity.HasQueryFilter(x => !tenantContext.IsResolved || x.TenantId == tenantContext.TenantId);
+        });
+
+        builder.Entity<PrivacyRequest>(entity =>
+        {
+            entity.HasIndex(x => new { x.TenantId, x.Reference }).IsUnique();
+            entity.Property(x => x.Reference).HasMaxLength(80);
+            entity.Property(x => x.RequestType).HasMaxLength(40);
+            entity.Property(x => x.Status).HasMaxLength(40);
+            entity.Property(x => x.TokenHash).HasMaxLength(128);
             entity.HasQueryFilter(x => !tenantContext.IsResolved || x.TenantId == tenantContext.TenantId);
         });
 

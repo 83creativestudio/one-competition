@@ -25,6 +25,10 @@ export type Competition = {
   numberOfReserveWinners: number;
   perParticipantEntryLimit: number;
   requiresManualApproval: boolean;
+  minimumAge?: number;
+  allowedCountryCodes: string[];
+  requiresEmailVerification: boolean;
+  requiresPhoneVerification: boolean;
   entryLimit?: number;
   publishedAt?: string;
   closedAt?: string;
@@ -161,6 +165,7 @@ export type Subscription = {
   currentPeriodStartsAt: string;
   currentPeriodEndsAt: string;
   trialEndsAt?: string;
+  cancelAtPeriodEnd: boolean;
 };
 export type BillingOverview = { plans: Plan[]; subscription?: Subscription };
 export type CompetitionField = {
@@ -202,3 +207,17 @@ export type TenantUser = {
   status: string;
   createdAt: string;
 };
+export type AuditEvent = { id: string; tenantId: string; actorUserId?: string; actorType: string; action: string; entityType: string; entityId?: string; occurredAt: string; correlationId: string };
+export type FeatureFlag = { id: string; code: string; name: string; isEnabled: boolean; environment: string };
+export type Reseller = { id: string; name: string; slug: string; status: string; tenantCount: number };
+export type PlatformDomain = { id: string; tenantId: string; tenantName: string; hostname: string; domainType: string; status: string; sslStatus?: string; certificateExpiresAt?: string };
+export type PlatformTenantDetail = { tenant: Tenant; activeUsers: number; domains: Domain[]; subscription?: Subscription };
+export type ConsentDefinition = { id: string; competitionId: string; consentType: string; languageCode: string; text: string; isRequired: boolean; version: number; createdAt: string };
+export type PublicConsent = { id: string; consentType: string; languageCode: string; text: string; isRequired: boolean; version: number };
+export type PublicCompetition = {
+  competitionId: string; tenantId: string; tenantSlug: string; name: string; slug: string; status: string; startsAt: string; endsAt: string;
+  minimumAge?: number; allowedCountryCodes: string[]; requiresEmailVerification: boolean; requiresPhoneVerification: boolean;
+  fields: CompetitionField[]; consents: PublicConsent[]; page?: { title: string; seoTitle?: string; seoDescription?: string; layoutJson: string };
+};
+export type FraudRule = { id: string; name: string; ruleType: string; configurationJson: string; scoreImpact: number; action: string; isEnabled: boolean };
+export type FraudSummary = { lowRisk: number; mediumRisk: number; highRisk: number; blocked: number; signals: { signalType: string; count: number; totalScore: number }[] };

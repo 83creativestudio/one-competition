@@ -59,7 +59,7 @@ Production rejects development DNS, SSL, storage, scanner, messaging, and lock p
 
 ## Database Migrations
 
-Migrations are under `apps/api/OneCompetitions.Infrastructure/Persistence/Migrations`, including `AddProductionOperations`.
+Migrations are under `apps/api/OneCompetitions.Infrastructure/Persistence/Migrations`, including `AddProductionOperations` and `CompleteProductionReadiness`.
 
 ```bash
 ASPNETCORE_ENVIRONMENT=Development dotnet ef migrations add <Name> \
@@ -93,4 +93,4 @@ docker compose -f docker-compose.production.yml --profile migration run --rm mig
 docker compose -f docker-compose.production.yml up -d
 ```
 
-Current limitations: SMS is provider-ready but not used by the MVP entry flow; self-service privacy request APIs and competition-specific upload cleanup are incomplete; Kubernetes manifests and high-volume queue partitioning are not included; Cloudflare and Stripe require account-side configuration. The latest stable Next.js release currently carries a moderate transitive PostCSS advisory.
+Current limitations: external staging deployment cannot be completed without environment credentials and a Docker-capable host; Kubernetes manifests, tenant deletion orchestration, social login, and high-volume queue partitioning are not included. Cloudflare, Stripe, SMTP, SMS, S3, and Turnstile require account-side configuration and staging validation. Next.js 16.2.10 currently carries a moderate transitive PostCSS advisory; the direct dependency is patched and the unsafe npm downgrade is intentionally not applied.

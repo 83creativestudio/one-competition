@@ -297,17 +297,35 @@ public sealed class PlatformJobProcessor(
             job.StorageKey = null;
             processed++;
         }
-        var policies = await dbContext.DataRetentionPolicies.IgnoreQueryFilters().Where(x => x.CompetitionId == null).ToListAsync(cancellationToken);
+        var policies = await dbContext.DataRetentionPolicies.IgnoreQueryFilters().ToListAsync(cancellationToken);
         foreach (var policy in policies)
         {
             var cutoff = now.AddDays(-policy.AnonymiseAfterDays);
-            var participants = (await dbContext.Participants.IgnoreQueryFilters().Where(x => x.TenantId == policy.TenantId && x.AnonymisedAt == null).Take(100).ToListAsync(cancellationToken))
+            var participantQuery = dbContext.Participants.IgnoreQueryFilters().Where(x => x.TenantId == policy.TenantId && x.AnonymisedAt == null);
+            if (policy.CompetitionId is not null)
+            {
+                var participantIds = dbContext.CompetitionEntries.IgnoreQueryFilters().Where(x => x.CompetitionId == policy.CompetitionId).Select(x => x.ParticipantId);
+                participantQuery = participantQuery.Where(x => participantIds.Contains(x.Id));
+            }
+            var participants = (await participantQuery.Take(100).ToListAsync(cancellationToken))
                 .Where(x => x.CreatedAt < cutoff).Take(25).ToList();
             foreach (var participant in participants)
             {
                 participant.PrimaryEmail = null; participant.PrimaryPhone = null; participant.FirstName = null; participant.LastName = null;
                 participant.DateOfBirth = null; participant.City = null; participant.AnonymisedAt = now; participant.UpdatedAt = now;
                 dbContext.AuditEvents.Add(SystemAudit(policy.TenantId, "participant.anonymised.retention", "Participant", participant.Id, null));
+                processed++;
+            }
+
+            var uploadCutoff = now.AddDays(-policy.DeleteUploadsAfterDays);
+            var assets = (await dbContext.Assets.IgnoreQueryFilters().Where(x => x.TenantId == policy.TenantId && x.DeletedAt == null
+                    && (policy.CompetitionId == null || x.CompetitionId == policy.CompetitionId)).Take(100).ToListAsync(cancellationToken))
+                .Where(x => x.CreatedAt < uploadCutoff).Take(25).ToList();
+            foreach (var asset in assets)
+            {
+                await storage.DeleteAsync(asset.StorageKey, cancellationToken);
+                asset.DeletedAt = now;
+                dbContext.AuditEvents.Add(SystemAudit(policy.TenantId, "asset.deleted.retention", "Asset", asset.Id, asset.CompetitionId));
                 processed++;
             }
         }

@@ -320,6 +320,41 @@ namespace OneCompetitions.Infrastructure.Persistence.Migrations
                     b.ToTable("AuditEvents");
                 });
 
+            modelBuilder.Entity("OneCompetitions.Domain.Billing.BillingWebhookEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("ExternalEventId")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<DateTimeOffset>("ProcessedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Provider", "ExternalEventId")
+                        .IsUnique();
+
+                    b.ToTable("BillingWebhookEvents");
+                });
+
             modelBuilder.Entity("OneCompetitions.Domain.Billing.Plan", b =>
                 {
                     b.Property<Guid>("Id")
@@ -369,6 +404,9 @@ namespace OneCompetitions.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<bool>("CancelAtPeriodEnd")
+                        .HasColumnType("boolean");
+
                     b.Property<DateTimeOffset?>("CancelledAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -380,6 +418,9 @@ namespace OneCompetitions.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTimeOffset>("CurrentPeriodStartsAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ExternalCustomerId")
+                        .HasColumnType("text");
 
                     b.Property<string>("ExternalProvider")
                         .HasColumnType("text");
@@ -586,6 +627,10 @@ namespace OneCompetitions.Infrastructure.Persistence.Migrations
                     b.Property<bool>("AllowGuestEntry")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("AllowedCountryCodesJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<DateTimeOffset?>("ArchivedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -643,6 +688,9 @@ namespace OneCompetitions.Infrastructure.Persistence.Migrations
                     b.Property<string>("InternalReference")
                         .HasMaxLength(120)
                         .HasColumnType("character varying(120)");
+
+                    b.Property<int?>("MinimumAge")
+                        .HasColumnType("integer");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -1265,6 +1313,9 @@ namespace OneCompetitions.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("EntrySourceId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("IdempotencyKeyHash")
+                        .HasColumnType("text");
+
                     b.Property<string>("IpHash")
                         .HasColumnType("text");
 
@@ -1313,6 +1364,9 @@ namespace OneCompetitions.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CompetitionId", "IdempotencyKeyHash")
+                        .IsUnique();
+
                     b.HasIndex("CompetitionId", "ParticipantId");
 
                     b.HasIndex("TenantId", "EntryReference")
@@ -1339,6 +1393,9 @@ namespace OneCompetitions.Infrastructure.Persistence.Migrations
                     b.Property<DateOnly?>("DateValue")
                         .HasColumnType("date");
 
+                    b.Property<string>("EncryptedValue")
+                        .HasColumnType("text");
+
                     b.Property<Guid>("EntryId")
                         .HasColumnType("uuid");
 
@@ -1357,6 +1414,48 @@ namespace OneCompetitions.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("EntryAnswers");
+                });
+
+            modelBuilder.Entity("OneCompetitions.Domain.Entries.EntryVerification", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("EntryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTimeOffset?>("VerifiedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EntryId", "Channel")
+                        .IsUnique();
+
+                    b.ToTable("EntryVerifications");
                 });
 
             modelBuilder.Entity("OneCompetitions.Domain.Exports.ExportJob", b =>
@@ -1824,6 +1923,58 @@ namespace OneCompetitions.Infrastructure.Persistence.Migrations
                     b.ToTable("DataRetentionPolicies");
                 });
 
+            modelBuilder.Entity("OneCompetitions.Domain.Privacy.PrivacyRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ParticipantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Reference")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("RequestType")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("ResultStorageKey")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Reference")
+                        .IsUnique();
+
+                    b.ToTable("PrivacyRequests");
+                });
+
             modelBuilder.Entity("OneCompetitions.Domain.Qr.QrCode", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1927,6 +2078,41 @@ namespace OneCompetitions.Infrastructure.Persistence.Migrations
                     b.HasIndex("QrCodeId", "OccurredAt");
 
                     b.ToTable("QrScans");
+                });
+
+            modelBuilder.Entity("OneCompetitions.Domain.Tenants.Reseller", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Slug")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Slug")
+                        .IsUnique();
+
+                    b.ToTable("Resellers");
                 });
 
             modelBuilder.Entity("OneCompetitions.Domain.Tenants.Tenant", b =>
@@ -2081,6 +2267,12 @@ namespace OneCompetitions.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("InvitationExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("InvitationTokenHash")
+                        .HasColumnType("text");
 
                     b.Property<DateTimeOffset?>("InvitedAt")
                         .HasColumnType("timestamp with time zone");

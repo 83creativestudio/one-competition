@@ -17,6 +17,8 @@ async function forward(request: NextRequest, segments: string[]) {
     method: request.method,
     headers: {
       ...(request.headers.get("content-type") ? { "Content-Type": request.headers.get("content-type")! } : {}),
+      Host: request.nextUrl.host,
+      "X-Forwarded-Proto": request.nextUrl.protocol.replace(":", ""),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(jar.get(tenantCookie)?.value ? { "X-One-Tenant": jar.get(tenantCookie)!.value } : {})
     },

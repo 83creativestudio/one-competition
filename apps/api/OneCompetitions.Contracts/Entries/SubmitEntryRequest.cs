@@ -9,4 +9,9 @@ public sealed record SubmitEntryRequest(
     string? IdempotencyKey,
     Guid? CampaignSourceId,
     IReadOnlyList<EntryAnswerRequest> Answers,
-    IReadOnlyList<ConsentAcceptanceRequest> Consents);
+    IReadOnlyList<ConsentAcceptanceRequest> Consents,
+    string? CaptchaToken = null,
+    string? DeviceFingerprint = null,
+    DateTimeOffset? FormStartedAt = null,
+    DateOnly? DateOfBirth = null,
+    string? CountryCode = null);

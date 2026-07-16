@@ -57,6 +57,7 @@ public sealed class BillingService(
         if (stripeEvent.Data.Object is Stripe.Subscription subscription && subscription.Metadata.TryGetValue("tenant_id", out var tenantText)
             && subscription.Metadata.TryGetValue("plan_id", out var planText) && Guid.TryParse(tenantText, out var tenantId) && Guid.TryParse(planText, out var planId))
         {
+            if (await DbContext.BillingWebhookEvents.IgnoreQueryFilters().AnyAsync(x => x.Provider == "Stripe" && x.ExternalEventId == stripeEvent.Id, cancellationToken)) return;
             var entity = await DbContext.TenantSubscriptions.IgnoreQueryFilters().SingleOrDefaultAsync(x => x.ExternalSubscriptionId == subscription.Id, cancellationToken);
             entity ??= new TenantSubscription { Id = Guid.NewGuid(), TenantId = tenantId, CreatedAt = DateTimeOffset.UtcNow, StartedAt = DateTimeOffset.UtcNow };
             if (DbContext.Entry(entity).State == EntityState.Detached) DbContext.TenantSubscriptions.Add(entity);
@@ -64,6 +65,8 @@ public sealed class BillingService(
             entity.Status = subscription.Status;
             entity.ExternalProvider = "Stripe";
             entity.ExternalSubscriptionId = subscription.Id;
+            entity.ExternalCustomerId = subscription.CustomerId;
+            entity.CancelAtPeriodEnd = subscription.CancelAtPeriodEnd;
             entity.CurrentPeriodStartsAt = subscription.Items.Data.Min(x => x.CurrentPeriodStart);
             entity.CurrentPeriodEndsAt = subscription.Items.Data.Max(x => x.CurrentPeriodEnd);
             entity.CancelledAt = subscription.Status == "canceled" ? DateTimeOffset.UtcNow : null;
@@ -80,8 +83,52 @@ public sealed class BillingService(
             };
             tenant.SuspendedAt = tenant.Status == Domain.Tenants.TenantStatus.Suspended ? DateTimeOffset.UtcNow : null;
             tenant.UpdatedAt = DateTimeOffset.UtcNow;
+            DbContext.BillingWebhookEvents.Add(new BillingWebhookEvent
+            {
+                Id = Guid.NewGuid(), TenantId = tenantId, Provider = "Stripe", ExternalEventId = stripeEvent.Id,
+                EventType = stripeEvent.Type, ProcessedAt = DateTimeOffset.UtcNow
+            });
             await DbContext.SaveChangesAsync(cancellationToken);
         }
+    }
+
+    public async Task<BillingPortalResponse> CreatePortalAsync(Guid userId, CreateBillingPortalRequest request, CancellationToken cancellationToken)
+    {
+        await EnsureTenantManagerAsync(userId, cancellationToken);
+        ValidateRedirect(request.ReturnUrl);
+        var subscription = (await DbContext.TenantSubscriptions.Where(x => x.ExternalProvider == "Stripe").ToListAsync(cancellationToken)).MaxBy(x => x.CreatedAt)
+            ?? throw new InvalidOperationException("An active Stripe subscription was not found.");
+        if (string.IsNullOrWhiteSpace(subscription.ExternalCustomerId)) throw new InvalidOperationException("Stripe customer information is unavailable.");
+        StripeConfiguration.ApiKey = configuration["STRIPE_SECRET_KEY"] ?? throw new InvalidOperationException("STRIPE_SECRET_KEY is required.");
+        var session = await new Stripe.BillingPortal.SessionService().CreateAsync(new Stripe.BillingPortal.SessionCreateOptions
+        {
+            Customer = subscription.ExternalCustomerId,
+            ReturnUrl = request.ReturnUrl
+        }, cancellationToken: cancellationToken);
+        return new BillingPortalResponse(session.Url);
+    }
+
+    public async Task CancelAsync(Guid userId, CancelSubscriptionRequest request, CancellationToken cancellationToken)
+    {
+        await EnsureTenantManagerAsync(userId, cancellationToken);
+        var subscription = (await DbContext.TenantSubscriptions.Where(x => x.ExternalProvider == "Stripe").ToListAsync(cancellationToken)).MaxBy(x => x.CreatedAt)
+            ?? throw new InvalidOperationException("An active Stripe subscription was not found.");
+        if (string.IsNullOrWhiteSpace(subscription.ExternalSubscriptionId)) throw new InvalidOperationException("Stripe subscription information is unavailable.");
+        StripeConfiguration.ApiKey = configuration["STRIPE_SECRET_KEY"] ?? throw new InvalidOperationException("STRIPE_SECRET_KEY is required.");
+        var service = new Stripe.SubscriptionService();
+        if (request.AtPeriodEnd)
+        {
+            await service.UpdateAsync(subscription.ExternalSubscriptionId, new SubscriptionUpdateOptions { CancelAtPeriodEnd = true }, cancellationToken: cancellationToken);
+            subscription.CancelAtPeriodEnd = true;
+        }
+        else
+        {
+            await service.CancelAsync(subscription.ExternalSubscriptionId, cancellationToken: cancellationToken);
+            subscription.Status = "canceled";
+            subscription.CancelledAt = DateTimeOffset.UtcNow;
+        }
+        subscription.UpdatedAt = DateTimeOffset.UtcNow;
+        await DbContext.SaveChangesAsync(cancellationToken);
     }
 
     private void ValidateRedirect(string value)
@@ -98,7 +145,7 @@ public sealed class BillingService(
 
     private static PlanResponse ToResponse(BillingPlan plan) => new(plan.Id, plan.Name, plan.Code, plan.MonthlyPrice, plan.AnnualPrice,
         JsonSerializer.Deserialize<Dictionary<string, object?>>(plan.FeatureConfigurationJson) ?? []);
-    private static SubscriptionResponse ToResponse(TenantSubscription value) => new(value.Id, value.PlanId, value.Status, value.CurrentPeriodStartsAt, value.CurrentPeriodEndsAt, value.TrialEndsAt);
+    private static SubscriptionResponse ToResponse(TenantSubscription value) => new(value.Id, value.PlanId, value.Status, value.CurrentPeriodStartsAt, value.CurrentPeriodEndsAt, value.TrialEndsAt, value.CancelAtPeriodEnd);
 }
 
 public sealed class PlanLimitService(AppDbContext dbContext) : IPlanLimitService

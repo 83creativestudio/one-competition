@@ -14,6 +14,8 @@ public sealed class TenantSubscription : TenantScopedEntity
     public DateTimeOffset? CancelledAt { get; set; }
     public string? ExternalProvider { get; set; }
     public string? ExternalSubscriptionId { get; set; }
+    public string? ExternalCustomerId { get; set; }
+    public bool CancelAtPeriodEnd { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 }

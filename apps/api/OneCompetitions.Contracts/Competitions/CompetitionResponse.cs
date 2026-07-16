@@ -16,5 +16,9 @@ public sealed record CompetitionResponse(
     int NumberOfWinners,
     int NumberOfReserveWinners,
     bool RequiresManualApproval,
+    int? MinimumAge,
+    IReadOnlyList<string> AllowedCountryCodes,
+    bool RequiresEmailVerification,
+    bool RequiresPhoneVerification,
     DateTimeOffset? PublishedAt,
     DateTimeOffset? ClosedAt);

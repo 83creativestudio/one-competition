@@ -20,6 +20,17 @@ public sealed class BillingController(IBillingService billing) : ControllerBase
     public async Task<ActionResult<CheckoutSessionResponse>> Checkout(CreateCheckoutSessionRequest request, CancellationToken cancellationToken) =>
         Ok(await billing.CreateCheckoutAsync(User.GetUserId(), request, cancellationToken));
 
+    [HttpPost("portal")]
+    public async Task<ActionResult<BillingPortalResponse>> Portal(CreateBillingPortalRequest request, CancellationToken cancellationToken) =>
+        Ok(await billing.CreatePortalAsync(User.GetUserId(), request, cancellationToken));
+
+    [HttpPost("cancel")]
+    public async Task<IActionResult> Cancel(CancelSubscriptionRequest request, CancellationToken cancellationToken)
+    {
+        await billing.CancelAsync(User.GetUserId(), request, cancellationToken);
+        return Accepted();
+    }
+
     [HttpPost("stripe/webhook")]
     [AllowAnonymous]
     public async Task<IActionResult> StripeWebhook(CancellationToken cancellationToken)

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using OneCompetitions.Application.Auditing;
+using OneCompetitions.Application.Notifications;
 using OneCompetitions.Application.Tenants;
 using OneCompetitions.Application.Winners;
 using OneCompetitions.Contracts.Winners;
@@ -15,7 +16,8 @@ public sealed class WinnerService(
     AppDbContext dbContext,
     ITenantContext tenantContext,
     UserManager<ApplicationUser> userManager,
-    IAuditLogger auditLogger)
+    IAuditLogger auditLogger,
+    INotificationQueue notifications)
     : TenantScopedServiceBase(dbContext, tenantContext, userManager), IWinnerService
 {
     public async Task<IReadOnlyList<WinnerClaimResponse>> ListAsync(Guid userId, Guid competitionId, CancellationToken cancellationToken)
@@ -31,25 +33,56 @@ public sealed class WinnerService(
         return await query.ToListAsync(cancellationToken);
     }
 
-    public Task<WinnerClaimResponse> ContactAsync(Guid userId, Guid competitionId, Guid winnerId, WinnerActionRequest request, CancellationToken cancellationToken)
+    public async Task<WinnerClaimResponse> ContactAsync(Guid userId, Guid competitionId, Guid winnerId, WinnerActionRequest request, CancellationToken cancellationToken)
     {
-        return MutateAsync(userId, competitionId, winnerId, "winner.contacted", claim =>
+        await EnsureTenantManagerAsync(userId, cancellationToken);
+        var claim = await FindAsync(competitionId, winnerId, cancellationToken);
+        var participant = await (from entry in DbContext.CompetitionEntries
+                                 join person in DbContext.Participants on entry.ParticipantId equals person.Id
+                                 where entry.Id == claim.EntryId
+                                 select person).SingleAsync(cancellationToken);
+        var channel = string.IsNullOrWhiteSpace(request.Channel) ? "Manual" : request.Channel.Trim();
+        string recipientMasked;
+        string outcome;
+        if (channel.Equals("Email", StringComparison.OrdinalIgnoreCase))
         {
-            claim.Status = WinnerClaimStatus.Contacted;
-            claim.FirstContactedAt ??= DateTimeOffset.UtcNow;
-            claim.LastContactedAt = DateTimeOffset.UtcNow;
-            DbContext.WinnerContactAttempts.Add(new WinnerContactAttempt
-            {
-                Id = Guid.NewGuid(),
-                WinnerClaimId = claim.Id,
-                Channel = "Manual",
-                RecipientMasked = "recorded-outside-system",
-                Outcome = "Contacted",
-                Notes = request.Notes,
-                AttemptedByUserId = userId,
-                AttemptedAt = DateTimeOffset.UtcNow
-            });
-        }, cancellationToken);
+            if (string.IsNullOrWhiteSpace(participant.PrimaryEmail)) throw new InvalidOperationException("The winner does not have an email address.");
+            await notifications.QueueEmailAsync(TenantContext.TenantId, competitionId,
+                new EmailMessage(participant.PrimaryEmail, "You have been selected as a competition winner", "Please contact the competition organiser to verify your eligibility and claim your prize."), cancellationToken);
+            recipientMasked = MaskEmail(participant.PrimaryEmail);
+            outcome = "Queued";
+            channel = "Email";
+        }
+        else if (channel.Equals("Sms", StringComparison.OrdinalIgnoreCase))
+        {
+            if (string.IsNullOrWhiteSpace(participant.PrimaryPhone)) throw new InvalidOperationException("The winner does not have a phone number.");
+            await notifications.QueueSmsAsync(TenantContext.TenantId, competitionId,
+                new SmsMessage(participant.PrimaryPhone, "ONE. Competitions: you have been selected as a winner. Please contact the organiser to verify and claim your prize."), cancellationToken);
+            recipientMasked = MaskPhone(participant.PrimaryPhone);
+            outcome = "Queued";
+            channel = "Sms";
+        }
+        else if (channel.Equals("Manual", StringComparison.OrdinalIgnoreCase))
+        {
+            recipientMasked = "recorded-outside-system";
+            outcome = "Contacted";
+            channel = "Manual";
+        }
+        else throw new InvalidOperationException("Contact channel must be Email, Sms, or Manual.");
+
+        var now = DateTimeOffset.UtcNow;
+        claim.Status = WinnerClaimStatus.Contacted;
+        claim.FirstContactedAt ??= now;
+        claim.LastContactedAt = now;
+        claim.UpdatedAt = now;
+        DbContext.WinnerContactAttempts.Add(new WinnerContactAttempt
+        {
+            Id = Guid.NewGuid(), WinnerClaimId = claim.Id, Channel = channel, RecipientMasked = recipientMasked,
+            Outcome = outcome, Notes = request.Notes, AttemptedByUserId = userId, AttemptedAt = now
+        });
+        await DbContext.SaveChangesAsync(cancellationToken);
+        await auditLogger.RecordAsync(new AuditRecord(TenantContext.TenantId, userId, "User", "winner.contacted", "WinnerClaim", claim.Id.ToString(), $"competition:{competitionId};channel:{channel}", Guid.NewGuid().ToString("N")), cancellationToken);
+        return ToResponse(claim);
     }
 
     public Task<WinnerClaimResponse> AcceptAsync(Guid userId, Guid competitionId, Guid winnerId, CancellationToken cancellationToken)
@@ -131,4 +164,10 @@ public sealed class WinnerService(
     }
 
     private static WinnerClaimResponse ToResponse(WinnerClaim claim) => new(claim.Id, claim.DrawResultId, claim.EntryId, claim.Status.ToString(), claim.FirstContactedAt, claim.AcceptedAt, claim.PrizeDeliveredAt, claim.DisqualificationReason);
+    private static string MaskEmail(string value)
+    {
+        var parts = value.Split('@', 2);
+        return parts.Length == 2 ? $"{parts[0][0]}***@{parts[1]}" : "***";
+    }
+    private static string MaskPhone(string value) => value.Length <= 4 ? "****" : $"***{value[^4..]}";
 }
