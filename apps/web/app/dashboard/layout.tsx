@@ -5,5 +5,6 @@ import { getSessionProfile } from "@/lib/server-auth";
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const profile = await getSessionProfile();
   if (!profile) redirect("/login");
-  return <DashboardShell email={profile.email}>{children}</DashboardShell>;
+  const canAccessPlatform = profile.roles.some(role => role === "PlatformOwner" || role === "PlatformAdministrator");
+  return <DashboardShell email={profile.email} canAccessPlatform={canAccessPlatform}>{children}</DashboardShell>;
 }
