@@ -30,6 +30,15 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD}
     restart: unless-stopped
 
+  storage-init:
+    image: one-competitions-api:${RELEASE_TAG:?Set RELEASE_TAG}
+    user: "0"
+    entrypoint: ["sh", "-c"]
+    command: ["chown -R 1654:1654 /app/storage"]
+    volumes:
+      - object-storage:/app/storage
+    restart: "no"
+
   api:
     image: one-competitions-api:${RELEASE_TAG:?Set RELEASE_TAG}
     build:
@@ -50,6 +59,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      storage-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8080/health/ready"]
       interval: 15s
