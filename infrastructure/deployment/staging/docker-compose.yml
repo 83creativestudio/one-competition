@@ -30,34 +30,6 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD}
     restart: unless-stopped
 
-  minio:
-    image: minio/minio:RELEASE.2025-07-23T15-54-02Z
-    command: server /data
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD}
-    volumes:
-      - minio-data:/data
-    healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    restart: unless-stopped
-
-  minio-init:
-    image: minio/mc:RELEASE.2025-07-21T05-28-08Z
-    depends_on:
-      minio:
-        condition: service_healthy
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD}
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}" && mc mb --ignore-existing local/one-competitions-staging
-    restart: "no"
-
   api:
     image: one-competitions-api:${RELEASE_TAG:?Set RELEASE_TAG}
     build:
@@ -68,21 +40,16 @@ services:
       DATABASE_PROVIDER: postgres
       DATABASE_CONNECTION_STRING: Host=postgres;Port=5432;Database=one_competitions;Username=one;Password=${POSTGRES_PASSWORD}
       REDIS_CONNECTION_STRING: redis:6379,password=${REDIS_PASSWORD}
-      OBJECT_STORAGE_PROVIDER: s3
-      OBJECT_STORAGE_ENDPOINT: http://minio:9000
-      OBJECT_STORAGE_REGION: us-east-1
-      OBJECT_STORAGE_BUCKET: one-competitions-staging
-      OBJECT_STORAGE_ACCESS_KEY: ${MINIO_ROOT_USER}
-      OBJECT_STORAGE_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
-      OBJECT_STORAGE_FORCE_PATH_STYLE: "true"
+      OBJECT_STORAGE_PROVIDER: local
+      LOCAL_STORAGE_PATH: /app/storage
       DISTRIBUTED_LOCK_PROVIDER: redis
+    volumes:
+      - object-storage:/app/storage
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-      minio-init:
-        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8080/health/ready"]
       interval: 15s
@@ -100,14 +67,11 @@ services:
       DATABASE_PROVIDER: postgres
       DATABASE_CONNECTION_STRING: Host=postgres;Port=5432;Database=one_competitions;Username=one;Password=${POSTGRES_PASSWORD}
       REDIS_CONNECTION_STRING: redis:6379,password=${REDIS_PASSWORD}
-      OBJECT_STORAGE_PROVIDER: s3
-      OBJECT_STORAGE_ENDPOINT: http://minio:9000
-      OBJECT_STORAGE_REGION: us-east-1
-      OBJECT_STORAGE_BUCKET: one-competitions-staging
-      OBJECT_STORAGE_ACCESS_KEY: ${MINIO_ROOT_USER}
-      OBJECT_STORAGE_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
-      OBJECT_STORAGE_FORCE_PATH_STYLE: "true"
+      OBJECT_STORAGE_PROVIDER: local
+      LOCAL_STORAGE_PATH: /app/storage
       DISTRIBUTED_LOCK_PROVIDER: redis
+    volumes:
+      - object-storage:/app/storage
     depends_on:
       api:
         condition: service_healthy
@@ -141,4 +105,4 @@ services:
 volumes:
   postgres-data:
   redis-data:
-  minio-data:
+  object-storage:
