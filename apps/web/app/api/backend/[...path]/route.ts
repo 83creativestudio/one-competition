@@ -30,7 +30,12 @@ async function forward(request: NextRequest, segments: string[]) {
   let upstream = await send(access);
   let refreshed: { accessToken: string; refreshToken: string; expiresAt: string } | null = null;
   if (upstream.status === 401 && refresh) {
-    const refreshResponse = await fetch(`${apiBaseUrl()}/api/auth/refresh`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ refreshToken: refresh }), cache: "no-store" });
+    const refreshResponse = await fetch(`${apiBaseUrl()}/api/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Host: request.nextUrl.host, "X-Forwarded-Proto": request.nextUrl.protocol.replace(":", "") },
+      body: JSON.stringify({ refreshToken: refresh }),
+      cache: "no-store"
+    });
     if (refreshResponse.ok) {
       refreshed = await refreshResponse.json();
       access = refreshed!.accessToken;

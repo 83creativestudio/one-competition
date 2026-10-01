@@ -5,7 +5,12 @@ type AuthResponse = { accessToken: string; refreshToken: string; expiresAt: stri
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const response = await fetch(`${apiBaseUrl()}/api/auth/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), cache: "no-store" });
+  const response = await fetch(`${apiBaseUrl()}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Host: request.nextUrl.host, "X-Forwarded-Proto": request.nextUrl.protocol.replace(":", "") },
+    body: JSON.stringify(body),
+    cache: "no-store"
+  });
   const payload = await response.json().catch(() => ({})) as AuthResponse & { detail?: string };
   if (!response.ok) return NextResponse.json(payload, { status: response.status });
   const result = NextResponse.json({ userId: payload.userId, email: payload.email, roles: payload.roles, tenants: payload.tenants });
