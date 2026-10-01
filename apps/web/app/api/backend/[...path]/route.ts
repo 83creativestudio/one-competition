@@ -17,8 +17,8 @@ async function forward(request: NextRequest, segments: string[]) {
     method: request.method,
     headers: {
       ...(request.headers.get("content-type") ? { "Content-Type": request.headers.get("content-type")! } : {}),
-      Host: request.nextUrl.host,
-      "X-Forwarded-Proto": request.nextUrl.protocol.replace(":", ""),
+      "X-Forwarded-Host": request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? request.nextUrl.host,
+      "X-Forwarded-Proto": request.headers.get("x-forwarded-proto") ?? request.nextUrl.protocol.replace(":", ""),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(jar.get(participantSessionCookie)?.value ? { "X-One-Participant-Session": jar.get(participantSessionCookie)!.value } : {}),
       ...(jar.get(tenantCookie)?.value ? { "X-One-Tenant": jar.get(tenantCookie)!.value } : {})
@@ -32,7 +32,11 @@ async function forward(request: NextRequest, segments: string[]) {
   if (upstream.status === 401 && refresh) {
     const refreshResponse = await fetch(`${apiBaseUrl()}/api/auth/refresh`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Host: request.nextUrl.host, "X-Forwarded-Proto": request.nextUrl.protocol.replace(":", "") },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Forwarded-Host": request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? request.nextUrl.host,
+        "X-Forwarded-Proto": request.headers.get("x-forwarded-proto") ?? request.nextUrl.protocol.replace(":", "")
+      },
       body: JSON.stringify({ refreshToken: refresh }),
       cache: "no-store"
     });

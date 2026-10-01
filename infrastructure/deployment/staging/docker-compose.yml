@@ -49,6 +49,7 @@ services:
       DATABASE_PROVIDER: postgres
       DATABASE_CONNECTION_STRING: Host=postgres;Port=5432;Database=one_competitions;Username=one;Password=${POSTGRES_PASSWORD}
       REDIS_CONNECTION_STRING: redis:6379,password=${REDIS_PASSWORD}
+      FORWARDED_HEADERS_KNOWN_NETWORKS: 172.19.0.0/16
       OBJECT_STORAGE_PROVIDER: local
       LOCAL_STORAGE_PATH: /app/storage
       DISTRIBUTED_LOCK_PROVIDER: redis
@@ -118,3 +119,9 @@ volumes:
   postgres-data:
   redis-data:
   object-storage:
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.19.0.0/16

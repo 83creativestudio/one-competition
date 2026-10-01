@@ -10,7 +10,11 @@ export async function POST(request: NextRequest) {
   const path = body.tenantSlug ? `/c/${encodeURIComponent(body.tenantSlug)}/api/public/social-auth/complete` : "/api/public/social-auth/complete";
   const upstream = await fetch(`${apiBaseUrl()}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Host: request.nextUrl.host, "X-Forwarded-Proto": request.nextUrl.protocol.replace(":", "") },
+    headers: {
+      "Content-Type": "application/json",
+      "X-Forwarded-Host": request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? request.nextUrl.host,
+      "X-Forwarded-Proto": request.headers.get("x-forwarded-proto") ?? request.nextUrl.protocol.replace(":", "")
+    },
     body: JSON.stringify({ code: body.code }),
     cache: "no-store"
   });

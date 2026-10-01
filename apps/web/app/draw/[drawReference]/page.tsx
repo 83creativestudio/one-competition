@@ -6,9 +6,10 @@ type Verification = { drawReference: string; status: string; competitionName: st
 
 export default async function DrawVerificationPage({ params }: { params: Promise<{ drawReference: string }> }) {
   const { drawReference } = await params;
-  const host = (await headers()).get("host");
+  const requestHeaders = await headers();
+  const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host");
   const response = await fetch(`${apiBaseUrl()}/api/public/draws/${encodeURIComponent(drawReference)}/verification`, {
-    headers: host ? { Host: host } : {},
+    headers: host ? { "X-Forwarded-Host": host } : {},
     cache: "no-store"
   });
   if (!response.ok) return <main className="mx-auto max-w-3xl px-5 py-16"><h1 className="text-2xl font-semibold">Draw record not found</h1><p className="mt-3 text-muted">The supplied draw reference could not be verified.</p></main>;
