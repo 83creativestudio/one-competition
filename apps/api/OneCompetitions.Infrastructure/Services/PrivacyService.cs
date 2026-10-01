@@ -88,7 +88,23 @@ public sealed class PrivacyService(AppDbContext dbContext, ITenantContext tenant
     {
         await WithdrawMarketingAsync(participant.Id, cancellationToken);
         var identities = await dbContext.ParticipantIdentities.Where(x => x.ParticipantId == participant.Id).ToListAsync(cancellationToken);
-        foreach (var identity in identities) identity.ProviderEmail = null;
+        foreach (var identity in identities)
+        {
+            identity.ProviderEmail = null;
+            identity.ProviderUserName = null;
+            identity.ProviderSubjectHash = Guid.NewGuid().ToString("N");
+            identity.ProviderSubjectCiphertext = string.Empty;
+            identity.AccessTokenCiphertext = null;
+            identity.RefreshTokenCiphertext = null;
+            identity.GrantedScopes = null;
+            identity.TokenExpiresAt = null;
+            identity.IsVerified = false;
+            identity.EmailVerified = false;
+        }
+        var sessions = await dbContext.ParticipantSessions.Where(x => x.ParticipantId == participant.Id).ToListAsync(cancellationToken);
+        dbContext.ParticipantSessions.RemoveRange(sessions);
+        var actionVerifications = await dbContext.ParticipantSocialActionVerifications.Where(x => x.ParticipantId == participant.Id).ToListAsync(cancellationToken);
+        foreach (var verification in actionVerifications) verification.EvidenceJson = null;
         var entryIds = await dbContext.CompetitionEntries.Where(x => x.ParticipantId == participant.Id).Select(x => x.Id).ToListAsync(cancellationToken);
         var assets = await dbContext.Assets.Where(x => x.EntryId != null && entryIds.Contains(x.EntryId.Value) && x.DeletedAt == null).ToListAsync(cancellationToken);
         foreach (var asset in assets) { await storage.DeleteAsync(asset.StorageKey, cancellationToken); asset.DeletedAt = DateTimeOffset.UtcNow; }

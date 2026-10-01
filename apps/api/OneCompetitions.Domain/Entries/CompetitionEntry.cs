@@ -7,6 +7,8 @@ public sealed class CompetitionEntry : TenantScopedEntity
     public Guid Id { get; set; }
     public Guid CompetitionId { get; set; }
     public Guid ParticipantId { get; set; }
+    public Guid? ParticipantIdentityId { get; set; }
+    public string EntryMethod { get; set; } = "Email";
     public string EntryReference { get; set; } = string.Empty;
     public CompetitionEntryStatus Status { get; set; } = CompetitionEntryStatus.Started;
     public EligibilityStatus EligibilityStatus { get; set; } = EligibilityStatus.Unknown;

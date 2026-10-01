@@ -6,9 +6,11 @@ using Microsoft.EntityFrameworkCore;
 using OneCompetitions.Application.Auditing;
 using OneCompetitions.Application.Billing;
 using OneCompetitions.Application.Competitions;
+using OneCompetitions.Application.SocialAuth;
 using OneCompetitions.Application.Tenants;
 using OneCompetitions.Contracts.Competitions;
 using OneCompetitions.Contracts.Entries;
+using OneCompetitions.Contracts.SocialAuth;
 using OneCompetitions.Domain.Competitions;
 using OneCompetitions.Infrastructure.Identity;
 using OneCompetitions.Infrastructure.Persistence;
@@ -20,7 +22,8 @@ public sealed class CompetitionService(
     ITenantContext tenantContext,
     UserManager<ApplicationUser> userManager,
     IAuditLogger auditLogger,
-    IPlanLimitService planLimits)
+    IPlanLimitService planLimits,
+    ISocialAuthProviderRegistry socialProviders)
     : TenantScopedServiceBase(dbContext, tenantContext, userManager), ICompetitionService
 {
     public async Task<IReadOnlyList<CompetitionResponse>> ListAsync(Guid userId, CancellationToken cancellationToken)
@@ -56,6 +59,7 @@ public sealed class CompetitionService(
             AllowedCountryCodesJson = JsonSerializer.Serialize(NormalizeCountries(request.AllowedCountryCodes)),
             RequiresEmailVerification = request.RequiresEmailVerification,
             RequiresPhoneVerification = request.RequiresPhoneVerification,
+            AllowedParticipantAuthProvidersJson = JsonSerializer.Serialize(NormalizeAuthProviders(request.AllowedParticipantAuthProviders)),
             CreatedByUserId = userId,
             CreatedAt = now,
             UpdatedAt = now
@@ -100,6 +104,7 @@ public sealed class CompetitionService(
         competition.AllowedCountryCodesJson = JsonSerializer.Serialize(NormalizeCountries(request.AllowedCountryCodes));
         competition.RequiresEmailVerification = request.RequiresEmailVerification;
         competition.RequiresPhoneVerification = request.RequiresPhoneVerification;
+        competition.AllowedParticipantAuthProvidersJson = JsonSerializer.Serialize(NormalizeAuthProviders(request.AllowedParticipantAuthProviders));
         competition.UpdatedAt = DateTimeOffset.UtcNow;
 
         await DbContext.SaveChangesAsync(cancellationToken);
@@ -116,6 +121,22 @@ public sealed class CompetitionService(
         if (competition.CompetitionType != CompetitionType.StandardDraw)
         {
             throw new InvalidOperationException("Only standard draw competitions can be published in this release.");
+        }
+
+        var allowedProviders = ParseAuthProviders(competition.AllowedParticipantAuthProvidersJson);
+        if (allowedProviders.Any(x => !x.Equals("Email", StringComparison.OrdinalIgnoreCase)) && !await IsSocialLoginEnabledAsync(cancellationToken))
+            throw new InvalidOperationException("Social login is not enabled for this organisation.");
+        foreach (var providerName in allowedProviders.Where(x => !x.Equals("Email", StringComparison.OrdinalIgnoreCase)))
+        {
+            var provider = socialProviders.Get(providerName);
+            if (!provider.IsConfigured) throw new InvalidOperationException($"{provider.DisplayName} login must be configured before publishing.");
+        }
+        var requiredActions = await DbContext.CompetitionSocialActionRequirements.Where(x => x.CompetitionId == competition.Id && x.IsRequired).ToListAsync(cancellationToken);
+        foreach (var action in requiredActions)
+        {
+            var provider = socialProviders.Get(action.Provider);
+            if (!provider.IsConfigured || !provider.SupportedActions.Contains(action.ActionType))
+                throw new InvalidOperationException($"Required social action '{action.ActionType}' cannot be verified by {provider.DisplayName}.");
         }
 
         var now = DateTimeOffset.UtcNow;
@@ -303,8 +324,20 @@ public sealed class CompetitionService(
         var consents = consentVersions.GroupBy(x => x.ConsentType).Select(x => x.OrderByDescending(v => v.Version).First())
             .Select(x => new PublicConsentResponse(x.Id, x.ConsentType.ToString(), x.LanguageCode, x.Text, x.IsRequired, x.Version)).ToList();
         var page = await DbContext.CompetitionPages.Where(x => x.CompetitionId == competition.Id && x.LanguageCode == competition.DefaultLanguage).Select(x => ToResponse(x)).SingleOrDefaultAsync(cancellationToken);
+        var allowedProviders = ParseAuthProviders(competition.AllowedParticipantAuthProvidersJson);
+        var socialLoginEnabled = await IsSocialLoginEnabledAsync(cancellationToken);
+        var publicProviders = socialProviders.All.Where(x => socialLoginEnabled && x.IsConfigured && allowedProviders.Contains(x.Name))
+            .Select(x => new SocialAuthProviderResponse(x.Name, x.DisplayName, x.IsConfigured, x.SupportedActions.Order().ToList())).ToList();
+        var socialActions = (socialLoginEnabled ? await DbContext.CompetitionSocialActionRequirements.Where(x => x.CompetitionId == competition.Id).ToListAsync(cancellationToken) : [])
+            .Select(x =>
+            {
+                var provider = socialProviders.Get(x.Provider);
+                return new SocialActionRequirementResponse(x.Id, x.Provider, x.ActionType, x.TargetReference, x.Description, x.IsRequired,
+                    provider.SupportedActions.Contains(x.ActionType));
+            }).ToList();
         return new PublicCompetitionResponse(competition.Id, competition.TenantId, TenantContext.TenantSlug, competition.Name, competition.Slug, competition.Status.ToString(), competition.StartsAt, competition.EndsAt,
-            competition.MinimumAge, ParseCountries(competition.AllowedCountryCodesJson), competition.RequiresEmailVerification, competition.RequiresPhoneVerification, fields, consents, page);
+            competition.MinimumAge, ParseCountries(competition.AllowedCountryCodesJson), competition.RequiresEmailVerification, competition.RequiresPhoneVerification,
+            allowedProviders.Contains("Email", StringComparer.OrdinalIgnoreCase), publicProviders, socialActions, fields, consents, page);
     }
 
     private async Task<Competition> EnsureCompetitionAsync(Guid competitionId, CancellationToken cancellationToken)
@@ -318,12 +351,14 @@ public sealed class CompetitionService(
         var nextVersion = await DbContext.CompetitionVersions.Where(x => x.CompetitionId == competition.Id).Select(x => (int?)x.VersionNumber).MaxAsync(cancellationToken) ?? 0;
         var fields = await DbContext.CompetitionFields.Where(x => x.CompetitionId == competition.Id).OrderBy(x => x.DisplayOrder).ToListAsync(cancellationToken);
         var rules = await DbContext.CompetitionRulesVersions.Where(x => x.CompetitionId == competition.Id).OrderByDescending(x => x.VersionNumber).FirstOrDefaultAsync(cancellationToken);
+        var socialActions = await DbContext.CompetitionSocialActionRequirements.Where(x => x.CompetitionId == competition.Id)
+            .OrderBy(x => x.Provider).ThenBy(x => x.ActionType).ToListAsync(cancellationToken);
         DbContext.CompetitionVersions.Add(new CompetitionVersion
         {
             Id = Guid.NewGuid(),
             CompetitionId = competition.Id,
             VersionNumber = nextVersion + 1,
-            ConfigurationJson = JsonSerializer.Serialize(new { competition.Name, competition.Slug, competition.StartsAt, competition.EndsAt, competition.EntryLimit, competition.NumberOfWinners, competition.NumberOfReserveWinners, competition.MinimumAge, competition.AllowedCountryCodesJson, competition.RequiresEmailVerification, competition.RequiresPhoneVerification, Fields = fields.Select(x => new { x.FieldKey, x.FieldType, x.IsRequired }), RulesHash = rules?.ContentHash }),
+            ConfigurationJson = JsonSerializer.Serialize(new { competition.Name, competition.Slug, competition.StartsAt, competition.EndsAt, competition.EntryLimit, competition.NumberOfWinners, competition.NumberOfReserveWinners, competition.MinimumAge, competition.AllowedCountryCodesJson, competition.RequiresEmailVerification, competition.RequiresPhoneVerification, competition.AllowedParticipantAuthProvidersJson, Fields = fields.Select(x => new { x.FieldKey, x.FieldType, x.IsRequired }), SocialActions = socialActions.Select(x => new { x.Provider, x.ActionType, x.TargetReference, x.Description, x.IsRequired }), RulesHash = rules?.ContentHash }),
             RulesVersionId = rules?.Id,
             CreatedByUserId = userId,
             ChangeSummary = summary,
@@ -335,6 +370,15 @@ public sealed class CompetitionService(
     private async Task AuditAsync(Guid userId, string action, string entityType, Guid entityId, CancellationToken cancellationToken, string? metadata = null)
     {
         await auditLogger.RecordAsync(new AuditRecord(TenantContext.TenantId, userId, "User", action, entityType, entityId.ToString(), null, Guid.NewGuid().ToString("N")), cancellationToken);
+    }
+
+    private async Task<bool> IsSocialLoginEnabledAsync(CancellationToken cancellationToken)
+    {
+        var flag = await DbContext.FeatureFlags.SingleOrDefaultAsync(x => x.Code == "SocialLogin", cancellationToken);
+        if (flag is null) return false;
+        var tenantOverride = await DbContext.TenantFeatureOverrides
+            .SingleOrDefaultAsync(x => x.TenantId == TenantContext.TenantId && x.FeatureFlagId == flag.Id, cancellationToken);
+        return tenantOverride?.IsEnabled ?? flag.IsEnabled;
     }
 
     private static CompetitionPage DefaultPage(Competition competition, DateTimeOffset now)
@@ -405,9 +449,18 @@ public sealed class CompetitionService(
     private static string NormalizeSlug(string slug) => slug.Trim().ToLowerInvariant().Replace(' ', '-');
     private static string NormalizeKey(string value) => value.Trim().ToLowerInvariant().Replace(' ', '_');
     private static string[] NormalizeCountries(IReadOnlyList<string>? values) => values?.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim().ToUpperInvariant()).Distinct().ToArray() ?? [];
+    private static string[] NormalizeAuthProviders(IReadOnlyList<string>? values)
+    {
+        var supported = new HashSet<string>(["Email", "Google", "Apple", "Facebook", "X", "TikTok"], StringComparer.OrdinalIgnoreCase);
+        var normalized = values?.Where(x => !string.IsNullOrWhiteSpace(x) && supported.Contains(x.Trim()))
+            .Select(x => supported.Single(y => y.Equals(x.Trim(), StringComparison.OrdinalIgnoreCase))).Distinct(StringComparer.OrdinalIgnoreCase).ToArray() ?? ["Email"];
+        if (normalized.Length == 0) throw new InvalidOperationException("At least one participant login method must be enabled.");
+        return normalized;
+    }
     private static IReadOnlyList<string> ParseCountries(string value) => JsonSerializer.Deserialize<string[]>(value) ?? [];
+    private static IReadOnlyList<string> ParseAuthProviders(string value) => JsonSerializer.Deserialize<string[]>(value) ?? ["Email"];
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
-    private static CompetitionResponse ToResponse(Competition competition) => new(competition.Id, competition.TenantId, competition.Name, competition.Slug, competition.Status.ToString(), competition.CompetitionType.ToString(), competition.DefaultLanguage, competition.TimeZone, competition.StartsAt, competition.EndsAt, competition.EntryLimit, competition.PerParticipantEntryLimit, competition.NumberOfWinners, competition.NumberOfReserveWinners, competition.RequiresManualApproval, competition.MinimumAge, ParseCountries(competition.AllowedCountryCodesJson), competition.RequiresEmailVerification, competition.RequiresPhoneVerification, competition.PublishedAt, competition.ClosedAt);
+    private static CompetitionResponse ToResponse(Competition competition) => new(competition.Id, competition.TenantId, competition.Name, competition.Slug, competition.Description, competition.Status.ToString(), competition.CompetitionType.ToString(), competition.DefaultLanguage, competition.TimeZone, competition.StartsAt, competition.EndsAt, competition.EntryLimit, competition.PerParticipantEntryLimit, competition.NumberOfWinners, competition.NumberOfReserveWinners, competition.RequiresManualApproval, competition.MinimumAge, ParseCountries(competition.AllowedCountryCodesJson), competition.RequiresEmailVerification, competition.RequiresPhoneVerification, ParseAuthProviders(competition.AllowedParticipantAuthProvidersJson), competition.PublishedAt, competition.ClosedAt);
     private static CompetitionFieldResponse ToResponse(CompetitionField field) => new(field.Id, field.CompetitionId, field.FieldKey, field.FieldType.ToString(), field.Label, field.Placeholder, field.HelpText, field.IsRequired, field.DisplayOrder, field.ValidationJson, field.OptionsJson, field.IsSensitive, field.IsSearchable, field.IsExportable);
     private static RulesVersionResponse ToResponse(CompetitionRulesVersion rules) => new(rules.Id, rules.CompetitionId, rules.VersionNumber, rules.LanguageCode, rules.Title, rules.Content, rules.ContentHash, rules.EffectiveAt, rules.CreatedAt);
     private static CompetitionPageResponse ToResponse(CompetitionPage page) => new(page.Id, page.CompetitionId, page.LanguageCode, page.Status, page.Title, page.SeoTitle, page.SeoDescription, page.LayoutJson, page.PublishedVersion, page.PublishedAt);

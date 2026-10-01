@@ -23,7 +23,8 @@ public sealed class PublicCompetitionsController(ICompetitionService competition
     [HttpPost("/c/{tenantSlug}/api/public/competitions/{slug}/entries")]
     public async Task<ActionResult<EntryResponse>> Submit(string slug, SubmitEntryRequest request, CancellationToken cancellationToken, string? tenantSlug = null)
     {
-        var response = await entries.SubmitAsync(slug, request, HttpContext.Connection.RemoteIpAddress?.ToString(), Request.Headers.UserAgent.ToString(), cancellationToken);
+        var response = await entries.SubmitAsync(slug, request, Request.Headers["X-One-Participant-Session"].ToString(),
+            HttpContext.Connection.RemoteIpAddress?.ToString(), Request.Headers.UserAgent.ToString(), cancellationToken);
         return Ok(response);
     }
 

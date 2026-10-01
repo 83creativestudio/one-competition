@@ -15,6 +15,7 @@ export type Competition = {
   tenantId: string;
   name: string;
   slug: string;
+  description?: string;
   status: string;
   competitionType: string;
   defaultLanguage: string;
@@ -29,6 +30,7 @@ export type Competition = {
   allowedCountryCodes: string[];
   requiresEmailVerification: boolean;
   requiresPhoneVerification: boolean;
+  allowedParticipantAuthProviders: string[];
   entryLimit?: number;
   publishedAt?: string;
   closedAt?: string;
@@ -216,8 +218,12 @@ export type ConsentDefinition = { id: string; competitionId: string; consentType
 export type PublicConsent = { id: string; consentType: string; languageCode: string; text: string; isRequired: boolean; version: number };
 export type PublicCompetition = {
   competitionId: string; tenantId: string; tenantSlug: string; name: string; slug: string; status: string; startsAt: string; endsAt: string;
-  minimumAge?: number; allowedCountryCodes: string[]; requiresEmailVerification: boolean; requiresPhoneVerification: boolean;
+  minimumAge?: number; allowedCountryCodes: string[]; requiresEmailVerification: boolean; requiresPhoneVerification: boolean; allowEmailEntry: boolean;
+  socialAuthProviders: SocialAuthProvider[]; socialActions: SocialActionRequirement[];
   fields: CompetitionField[]; consents: PublicConsent[]; page?: { title: string; seoTitle?: string; seoDescription?: string; layoutJson: string };
 };
+export type SocialAuthProvider = { provider: string; displayName: string; isConfigured: boolean; supportedActions: string[] };
+export type SocialActionRequirement = { id: string; provider: string; actionType: string; targetReference: string; description?: string; isRequired: boolean; supportsAutomatedVerification: boolean; status?: string };
+export type ParticipantSocialSession = { provider: string; email?: string; displayName?: string; userName?: string; actions: SocialActionRequirement[] };
 export type FraudRule = { id: string; name: string; ruleType: string; configurationJson: string; scoreImpact: number; action: string; isEnabled: boolean };
 export type FraudSummary = { lowRisk: number; mediumRisk: number; highRisk: number; blocked: number; signals: { signalType: string; count: number; totalScore: number }[] };

@@ -41,8 +41,13 @@ public sealed class AppDbContext(
     public DbSet<CompetitionPage> CompetitionPages => Set<CompetitionPage>();
     public DbSet<CompetitionField> CompetitionFields => Set<CompetitionField>();
     public DbSet<CompetitionRulesVersion> CompetitionRulesVersions => Set<CompetitionRulesVersion>();
+    public DbSet<CompetitionSocialActionRequirement> CompetitionSocialActionRequirements => Set<CompetitionSocialActionRequirement>();
     public DbSet<Participant> Participants => Set<Participant>();
     public DbSet<ParticipantIdentity> ParticipantIdentities => Set<ParticipantIdentity>();
+    public DbSet<AuthTransaction> AuthTransactions => Set<AuthTransaction>();
+    public DbSet<SocialAuthCompletion> SocialAuthCompletions => Set<SocialAuthCompletion>();
+    public DbSet<ParticipantSession> ParticipantSessions => Set<ParticipantSession>();
+    public DbSet<ParticipantSocialActionVerification> ParticipantSocialActionVerifications => Set<ParticipantSocialActionVerification>();
     public DbSet<CompetitionEntry> CompetitionEntries => Set<CompetitionEntry>();
     public DbSet<EntryAnswer> EntryAnswers => Set<EntryAnswer>();
     public DbSet<EntryVerification> EntryVerifications => Set<EntryVerification>();
@@ -198,10 +203,80 @@ public sealed class AppDbContext(
 
         builder.Entity<ParticipantIdentity>(entity =>
         {
-            entity.HasIndex(x => new { x.Provider, x.ProviderSubjectHash }).IsUnique();
+            entity.HasIndex(x => new { x.TenantId, x.Provider, x.ProviderSubjectHash }).IsUnique();
             entity.Property(x => x.Provider).HasMaxLength(80);
             entity.Property(x => x.ProviderSubjectHash).HasMaxLength(128);
+            entity.Property(x => x.ProviderEmail).HasMaxLength(320);
+            entity.Property(x => x.ProviderUserName).HasMaxLength(200);
+            entity.Property(x => x.GrantedScopes).HasMaxLength(1000);
             entity.HasOne(x => x.Participant).WithMany().HasForeignKey(x => x.ParticipantId);
+            entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasQueryFilter(x => !tenantContext.IsResolved || x.TenantId == tenantContext.TenantId);
+        });
+
+        builder.Entity<AuthTransaction>(entity =>
+        {
+            entity.HasIndex(x => x.StateHash).IsUnique();
+            entity.HasIndex(x => x.ExpiresAt);
+            entity.Property(x => x.Provider).HasMaxLength(80);
+            entity.Property(x => x.StateHash).HasMaxLength(128);
+            entity.Property(x => x.NonceHash).HasMaxLength(128);
+            entity.Property(x => x.PkceChallenge).HasMaxLength(128);
+            entity.Property(x => x.ReturnUrl).HasMaxLength(2000);
+            entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<Competition>().WithMany().HasForeignKey(x => x.CompetitionId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasQueryFilter(x => !tenantContext.IsResolved || x.TenantId == tenantContext.TenantId);
+        });
+
+        builder.Entity<SocialAuthCompletion>(entity =>
+        {
+            entity.HasIndex(x => x.AuthTransactionId).IsUnique();
+            entity.HasIndex(x => x.CodeHash).IsUnique();
+            entity.HasIndex(x => x.ExpiresAt);
+            entity.Property(x => x.CodeHash).HasMaxLength(128);
+            entity.Property(x => x.ReturnUrl).HasMaxLength(2000);
+            entity.HasOne<AuthTransaction>().WithMany().HasForeignKey(x => x.AuthTransactionId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<Competition>().WithMany().HasForeignKey(x => x.CompetitionId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<Participant>().WithMany().HasForeignKey(x => x.ParticipantId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ParticipantIdentity>().WithMany().HasForeignKey(x => x.ParticipantIdentityId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasQueryFilter(x => !tenantContext.IsResolved || x.TenantId == tenantContext.TenantId);
+        });
+
+        builder.Entity<ParticipantSession>(entity =>
+        {
+            entity.HasIndex(x => x.TokenHash).IsUnique();
+            entity.HasIndex(x => x.ExpiresAt);
+            entity.Property(x => x.TokenHash).HasMaxLength(128);
+            entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<Competition>().WithMany().HasForeignKey(x => x.CompetitionId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<Participant>().WithMany().HasForeignKey(x => x.ParticipantId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ParticipantIdentity>().WithMany().HasForeignKey(x => x.ParticipantIdentityId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasQueryFilter(x => !tenantContext.IsResolved || x.TenantId == tenantContext.TenantId);
+        });
+
+        builder.Entity<CompetitionSocialActionRequirement>(entity =>
+        {
+            entity.HasIndex(x => new { x.CompetitionId, x.Provider, x.ActionType, x.TargetReference }).IsUnique();
+            entity.Property(x => x.Provider).HasMaxLength(80);
+            entity.Property(x => x.ActionType).HasMaxLength(80);
+            entity.Property(x => x.TargetReference).HasMaxLength(500);
+            entity.Property(x => x.Description).HasMaxLength(500);
+            entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<Competition>().WithMany().HasForeignKey(x => x.CompetitionId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasQueryFilter(x => !tenantContext.IsResolved || x.TenantId == tenantContext.TenantId);
+        });
+
+        builder.Entity<ParticipantSocialActionVerification>(entity =>
+        {
+            entity.HasIndex(x => new { x.RequirementId, x.ParticipantId }).IsUnique();
+            entity.Property(x => x.Status).HasMaxLength(40);
+            entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<Competition>().WithMany().HasForeignKey(x => x.CompetitionId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<CompetitionSocialActionRequirement>().WithMany().HasForeignKey(x => x.RequirementId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<Participant>().WithMany().HasForeignKey(x => x.ParticipantId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ParticipantIdentity>().WithMany().HasForeignKey(x => x.ParticipantIdentityId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasQueryFilter(x => !tenantContext.IsResolved || x.TenantId == tenantContext.TenantId);
         });
 
         builder.Entity<CompetitionEntry>(entity =>
@@ -213,6 +288,7 @@ public sealed class AppDbContext(
             entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(60);
             entity.Property(x => x.EligibilityStatus).HasConversion<string>().HasMaxLength(60);
             entity.Property(x => x.RiskLevel).HasConversion<string>().HasMaxLength(40);
+            entity.Property(x => x.EntryMethod).HasMaxLength(80);
             entity.HasQueryFilter(x => !tenantContext.IsResolved || x.TenantId == tenantContext.TenantId);
         });
 

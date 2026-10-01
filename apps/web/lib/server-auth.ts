@@ -4,6 +4,7 @@ export const accessCookie = "one_access";
 export const refreshCookie = "one_refresh";
 export const profileCookie = "one_profile";
 export const tenantCookie = "one_tenant_slug";
+export const participantSessionCookie = "one_participant_session";
 
 export function apiBaseUrl() {
   return process.env.API_BASE_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:5050";

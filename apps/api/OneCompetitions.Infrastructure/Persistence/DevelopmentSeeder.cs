@@ -198,12 +198,16 @@ public static class DevelopmentSeeder
                     Id = Guid.NewGuid(),
                     Code = code,
                     Name = code,
-                    IsEnabled = code is "CustomDomains" or "DrawCertificates" or "AdvancedFraud",
+                    IsEnabled = code is "CustomDomains" or "SocialLogin" or "DrawCertificates" or "AdvancedFraud",
                     CreatedAt = DateTimeOffset.UtcNow,
                     UpdatedAt = DateTimeOffset.UtcNow
                 });
             }
         }
+        var socialLogin = dbContext.FeatureFlags.Local.SingleOrDefault(x => x.Code == "SocialLogin")
+            ?? await dbContext.FeatureFlags.SingleAsync(x => x.Code == "SocialLogin", cancellationToken);
+        socialLogin.IsEnabled = true;
+        socialLogin.UpdatedAt = DateTimeOffset.UtcNow;
     }
 
     private static async Task EnsureCompetitionSeedAsync(AppDbContext dbContext, Guid tenantId, Guid adminUserId, string name, string slug, CancellationToken cancellationToken)

@@ -46,6 +46,7 @@ public sealed class PlatformJobProcessor(
         processed += await certificates.GeneratePendingAsync(cancellationToken);
         processed += await QueueWinnerRemindersAsync(cancellationToken);
         processed += await ApplyRetentionAsync(cancellationToken);
+        processed += await CleanupParticipantAuthAsync(cancellationToken);
         return processed;
     }
 
@@ -313,6 +314,13 @@ public sealed class PlatformJobProcessor(
             {
                 participant.PrimaryEmail = null; participant.PrimaryPhone = null; participant.FirstName = null; participant.LastName = null;
                 participant.DateOfBirth = null; participant.City = null; participant.AnonymisedAt = now; participant.UpdatedAt = now;
+                var identities = await dbContext.ParticipantIdentities.IgnoreQueryFilters().Where(x => x.ParticipantId == participant.Id).ToListAsync(cancellationToken);
+                foreach (var identity in identities)
+                {
+                    identity.ProviderEmail = null; identity.ProviderUserName = null; identity.ProviderSubjectHash = Guid.NewGuid().ToString("N");
+                    identity.ProviderSubjectCiphertext = string.Empty; identity.AccessTokenCiphertext = null; identity.RefreshTokenCiphertext = null;
+                    identity.GrantedScopes = null; identity.TokenExpiresAt = null; identity.IsVerified = false; identity.EmailVerified = false;
+                }
                 dbContext.AuditEvents.Add(SystemAudit(policy.TenantId, "participant.anonymised.retention", "Participant", participant.Id, null));
                 processed++;
             }
@@ -331,6 +339,24 @@ public sealed class PlatformJobProcessor(
         }
         if (processed > 0) await dbContext.SaveChangesAsync(cancellationToken);
         return processed;
+    }
+
+    private async Task<int> CleanupParticipantAuthAsync(CancellationToken cancellationToken)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var sessions = (await dbContext.ParticipantSessions.IgnoreQueryFilters().Take(500).ToListAsync(cancellationToken))
+            .Where(x => x.ExpiresAt <= now || x.ConsumedAt is not null).Take(200).ToList();
+        var completions = (await dbContext.SocialAuthCompletions.IgnoreQueryFilters().Take(500).ToListAsync(cancellationToken))
+            .Where(x => x.ExpiresAt <= now || x.UsedAt is not null).Take(200).ToList();
+        dbContext.ParticipantSessions.RemoveRange(sessions);
+        dbContext.SocialAuthCompletions.RemoveRange(completions);
+        if (sessions.Count + completions.Count > 0) await dbContext.SaveChangesAsync(cancellationToken);
+
+        var transactions = (await dbContext.AuthTransactions.IgnoreQueryFilters().Take(500).ToListAsync(cancellationToken))
+            .Where(x => x.ExpiresAt <= now || x.UsedAt is not null).Take(200).ToList();
+        dbContext.AuthTransactions.RemoveRange(transactions);
+        if (transactions.Count > 0) await dbContext.SaveChangesAsync(cancellationToken);
+        return sessions.Count + completions.Count + transactions.Count;
     }
 
     private static void Retry(NotificationMessage message, Exception exception)

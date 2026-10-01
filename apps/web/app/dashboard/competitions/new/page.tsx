@@ -15,13 +15,14 @@ const schema = z.object({
   name: z.string().min(3), slug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Use lowercase words separated by hyphens."),
   description: z.string().optional(), startsAt: z.string().min(1), endsAt: z.string().min(1), entryLimit: z.coerce.number().int().positive().optional(),
   perParticipantEntryLimit: z.coerce.number().int().min(1), numberOfWinners: z.coerce.number().int().min(1), numberOfReserveWinners: z.coerce.number().int().min(0), requiresManualApproval: z.boolean(),
-  minimumAge: z.coerce.number().int().min(0).optional(), allowedCountryCodes: z.string().optional(), requiresEmailVerification: z.boolean(), requiresPhoneVerification: z.boolean()
+  minimumAge: z.coerce.number().int().min(0).optional(), allowedCountryCodes: z.string().optional(), requiresEmailVerification: z.boolean(), requiresPhoneVerification: z.boolean(),
+  allowedParticipantAuthProviders: z.array(z.enum(["Email", "Google", "Apple", "Facebook", "X", "TikTok"])).min(1, "Select at least one login method.")
 }).refine(data => new Date(data.endsAt) > new Date(data.startsAt), { path: ["endsAt"], message: "Closing time must be after opening time." });
 type FormData = z.infer<typeof schema>;
 
 export default function NewCompetitionPage() {
   const router = useRouter();
-  const form = useForm<FormData>({ resolver: zodResolver(schema), defaultValues: { perParticipantEntryLimit: 1, numberOfWinners: 1, numberOfReserveWinners: 1, requiresManualApproval: true, requiresEmailVerification: true, requiresPhoneVerification: false } });
+  const form = useForm<FormData>({ resolver: zodResolver(schema), defaultValues: { perParticipantEntryLimit: 1, numberOfWinners: 1, numberOfReserveWinners: 1, requiresManualApproval: true, requiresEmailVerification: true, requiresPhoneVerification: false, allowedParticipantAuthProviders: ["Email"] } });
   const create = useMutation({ mutationFn: (values: FormData) => apiFetch<Competition>("api/competitions", { method: "POST", body: JSON.stringify({ ...values, entryLimit: values.entryLimit || null, minimumAge: values.minimumAge || null, allowedCountryCodes: values.allowedCountryCodes?.split(",").map(x => x.trim()).filter(Boolean) ?? [], startsAt: new Date(values.startsAt).toISOString(), endsAt: new Date(values.endsAt).toISOString() }) }), onSuccess: item => router.push(`/dashboard/competitions/${item.id}`) });
   return <main className="page max-w-4xl">
     <PageHeading title="New competition" description="Create the operational draft. Rules, fields and public content are configured after creation." action={<Link className="secondary-button" href="/dashboard/competitions"><ArrowLeft size={17} />Back</Link>} />
@@ -40,6 +41,7 @@ export default function NewCompetitionPage() {
       <label className="flex items-center gap-3 self-end pb-2 text-sm font-medium"><input className="h-4 w-4" type="checkbox" {...form.register("requiresManualApproval")} />Require manual entry approval</label>
       <label className="flex items-center gap-3 self-end pb-2 text-sm font-medium"><input className="h-4 w-4" type="checkbox" {...form.register("requiresEmailVerification")} />Require email verification</label>
       <label className="flex items-center gap-3 self-end pb-2 text-sm font-medium"><input className="h-4 w-4" type="checkbox" {...form.register("requiresPhoneVerification")} />Require phone verification</label>
+      <fieldset className="md:col-span-2"><legend className="text-sm font-semibold">Participant login methods</legend><div className="mt-3 grid gap-3 sm:grid-cols-3">{["Email", "Google", "Apple", "Facebook", "X", "TikTok"].map(provider => <label className="flex items-center gap-2 text-sm" key={provider}><input type="checkbox" value={provider} {...form.register("allowedParticipantAuthProviders")} />{provider}</label>)}</div>{form.formState.errors.allowedParticipantAuthProviders && <p className="field-error mt-2">{form.formState.errors.allowedParticipantAuthProviders.message}</p>}</fieldset>
       {create.error && <p className="text-sm text-red-700 md:col-span-2">{create.error.message}</p>}
       <div className="md:col-span-2"><button className="command-button" disabled={create.isPending} type="submit"><Save size={17} />{create.isPending ? "Creating" : "Create draft"}</button></div>
     </form>

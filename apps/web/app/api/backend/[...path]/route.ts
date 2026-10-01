@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { accessCookie, apiBaseUrl, authCookieOptions, refreshCookie, tenantCookie } from "@/lib/server-auth";
+import { accessCookie, apiBaseUrl, authCookieOptions, participantSessionCookie, refreshCookie, tenantCookie } from "@/lib/server-auth";
 
 async function forward(request: NextRequest, segments: string[]) {
   if (!["GET", "HEAD", "OPTIONS"].includes(request.method)) {
@@ -20,6 +20,7 @@ async function forward(request: NextRequest, segments: string[]) {
       Host: request.nextUrl.host,
       "X-Forwarded-Proto": request.nextUrl.protocol.replace(":", ""),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(jar.get(participantSessionCookie)?.value ? { "X-One-Participant-Session": jar.get(participantSessionCookie)!.value } : {}),
       ...(jar.get(tenantCookie)?.value ? { "X-One-Tenant": jar.get(tenantCookie)!.value } : {})
     },
     body,

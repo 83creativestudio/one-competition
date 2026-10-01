@@ -63,6 +63,9 @@ Competitions:
 - `GET /api/competitions/{id}/consents`
 - `POST /api/competitions/{id}/consents`
 - `PUT /api/competitions/{id}/page`
+- `GET /api/competitions/{id}/social-actions`
+- `POST /api/competitions/{id}/social-actions`
+- `DELETE /api/competitions/{id}/social-actions/{requirementId}`
 
 Public:
 
@@ -71,6 +74,11 @@ Public:
 - `GET /api/public/entries/{reference}/status`
 - `POST /api/public/entries/{reference}/verify-email`
 - `POST /api/public/entries/{reference}/verify-phone`
+- `GET /api/public/competitions/{slug}/social-auth/providers`
+- `GET /api/public/competitions/{slug}/social-auth/{provider}/start`
+- `GET|POST /api/participant-auth/{provider}/callback`
+- `POST /api/public/social-auth/complete`
+- `POST /api/public/social-actions/{requirementId}/verify`
 - `POST /api/public/privacy/requests`
 - `POST /api/public/privacy/requests/{reference}/complete`
 

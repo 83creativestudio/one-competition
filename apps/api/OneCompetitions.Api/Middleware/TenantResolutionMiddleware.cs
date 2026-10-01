@@ -32,7 +32,7 @@ public sealed class TenantResolutionMiddleware(RequestDelegate next)
         if (tenant is null)
         {
             tenantSetter.Clear(hostname);
-            if (ShouldRejectUnknownHost(context, hostname, baseDomain))
+            if (ShouldRejectUnknownHost(context, hostname, baseDomain, configuration))
             {
                 context.Response.StatusCode = StatusCodes.Status404NotFound;
                 await context.Response.WriteAsJsonAsync(new { error = "Unknown or inactive tenant domain." });
@@ -106,13 +106,24 @@ public sealed class TenantResolutionMiddleware(RequestDelegate next)
         return domain?.Tenant;
     }
 
-    private static bool ShouldRejectUnknownHost(HttpContext context, string hostname, string baseDomain)
+    private static bool ShouldRejectUnknownHost(HttpContext context, string hostname, string baseDomain, IConfiguration configuration)
     {
         if (context.Request.Path.StartsWithSegments("/health") || context.Request.Path.StartsWithSegments("/swagger"))
         {
             return false;
         }
 
-        return !LocalHosts.Contains(hostname) && !string.Equals(hostname, baseDomain, StringComparison.OrdinalIgnoreCase);
+        var platformHosts = new[] { "PLATFORM_AUTH_DOMAIN", "PLATFORM_QR_DOMAIN", "PLATFORM_VERIFY_DOMAIN" }
+            .Select(key => ConfigurationHost(configuration[key]))
+            .Where(value => value is not null);
+        return !LocalHosts.Contains(hostname)
+            && !string.Equals(hostname, baseDomain, StringComparison.OrdinalIgnoreCase)
+            && !platformHosts.Contains(hostname, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static string? ConfigurationHost(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        return Uri.TryCreate(value, UriKind.Absolute, out var uri) ? uri.IdnHost.ToLowerInvariant() : value.Trim().Trim('/').ToLowerInvariant();
     }
 }

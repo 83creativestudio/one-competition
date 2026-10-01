@@ -1,12 +1,16 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using OneCompetitions.Application.Auth;
+using OneCompetitions.Application.SocialAuth;
 using OneCompetitions.Domain.Branding;
 using OneCompetitions.Domain.Billing;
+using OneCompetitions.Domain.Features;
 using OneCompetitions.Domain.Tenants;
 using OneCompetitions.Infrastructure.Identity;
 using OneCompetitions.Infrastructure.Persistence;
@@ -22,6 +26,7 @@ public sealed class TestApplicationFactory : WebApplicationFactory<Program>
         builder.UseEnvironment("Testing");
         builder.UseSetting("JWT_SIGNING_KEY", "testing-signing-key-with-more-than-32-characters");
         builder.UseSetting("PLATFORM_BASE_DOMAIN", "competitions.local");
+        builder.UseSetting("PLATFORM_AUTH_DOMAIN", "auth.competitions.local");
         builder.UseSetting("DATABASE_PROVIDER", "sqlite");
         builder.UseSetting("DATABASE_CONNECTION_STRING", $"Data Source={_databasePath}");
         builder.ConfigureAppConfiguration(configuration =>
@@ -30,9 +35,15 @@ public sealed class TestApplicationFactory : WebApplicationFactory<Program>
             {
                 ["JWT_SIGNING_KEY"] = "testing-signing-key-with-more-than-32-characters",
                 ["PLATFORM_BASE_DOMAIN"] = "competitions.local",
+                ["PLATFORM_AUTH_DOMAIN"] = "auth.competitions.local",
                 ["DATABASE_PROVIDER"] = "sqlite",
                 ["DATABASE_CONNECTION_STRING"] = $"Data Source={_databasePath}"
             });
+        });
+        builder.ConfigureTestServices(services =>
+        {
+            services.RemoveAll<ISocialAuthProviderRegistry>();
+            services.AddSingleton<ISocialAuthProviderRegistry, FakeSocialAuthProviderRegistry>();
         });
     }
 
@@ -65,6 +76,8 @@ public sealed class TestApplicationFactory : WebApplicationFactory<Program>
                 IsActive = true, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow
             });
         }
+        if (!await db.FeatureFlags.AnyAsync(x => x.Code == "SocialLogin"))
+            db.FeatureFlags.Add(new FeatureFlag { Id = Guid.NewGuid(), Code = "SocialLogin", Name = "Social login", IsEnabled = true, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow });
 
         await EnsureUserAsync(userManager, db, "admin@onecompetitions.local", true, one.Id, true);
         await EnsureUserAsync(userManager, db, "owner@one.local", false, one.Id, true);

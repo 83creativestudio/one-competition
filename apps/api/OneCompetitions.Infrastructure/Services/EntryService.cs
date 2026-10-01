@@ -32,7 +32,7 @@ public sealed class EntryService(
     IFraudService fraud)
     : TenantScopedServiceBase(dbContext, tenantContext, userManager), IEntryService
 {
-    public async Task<EntryResponse> SubmitAsync(string competitionSlug, SubmitEntryRequest request, string? ipAddress, string? userAgent, CancellationToken cancellationToken)
+    public async Task<EntryResponse> SubmitAsync(string competitionSlug, SubmitEntryRequest request, string? participantSessionToken, string? ipAddress, string? userAgent, CancellationToken cancellationToken)
     {
         if (!TenantContext.IsResolved)
         {
@@ -51,11 +51,6 @@ public sealed class EntryService(
             throw new InvalidOperationException("Competition is not open for entries.");
         }
 
-        if (competition.RequiresEmailVerification && string.IsNullOrWhiteSpace(request.Email))
-            throw new InvalidOperationException("Email is required for this competition.");
-        if (competition.RequiresPhoneVerification && string.IsNullOrWhiteSpace(request.Phone))
-            throw new InvalidOperationException("Phone number is required for this competition.");
-        ValidateEligibility(competition, request, now);
         if (competition.EntryLimit is not null && await DbContext.CompetitionEntries.CountAsync(x => x.CompetitionId == competition.Id, cancellationToken) >= competition.EntryLimit)
             throw new InvalidOperationException("The competition entry limit has been reached.");
 
@@ -68,6 +63,46 @@ public sealed class EntryService(
                 return ToResponse(existing);
             }
         }
+
+        var allowedAuthProviders = ParseAuthProviders(competition.AllowedParticipantAuthProvidersJson);
+        ParticipantSession? participantSession = null;
+        ParticipantIdentity? participantIdentity = null;
+        Participant? socialParticipant = null;
+        if (!string.IsNullOrWhiteSpace(participantSessionToken))
+        {
+            participantSession = await DbContext.ParticipantSessions.SingleOrDefaultAsync(x => x.TokenHash == Hash(participantSessionToken), cancellationToken)
+                ?? throw new UnauthorizedAccessException("The participant session is invalid.");
+            if (participantSession.CompetitionId != competition.Id || participantSession.ExpiresAt <= now || participantSession.ConsumedAt is not null)
+                throw new UnauthorizedAccessException("The participant session has expired or cannot be used for this competition.");
+            participantIdentity = await DbContext.ParticipantIdentities.SingleAsync(x => x.Id == participantSession.ParticipantIdentityId, cancellationToken);
+            if (!allowedAuthProviders.Contains(participantIdentity.Provider))
+                throw new UnauthorizedAccessException("This social login method is not enabled for the competition.");
+            socialParticipant = await DbContext.Participants.SingleAsync(x => x.Id == participantSession.ParticipantId, cancellationToken);
+
+            var requiredSocialActions = await DbContext.CompetitionSocialActionRequirements
+                .Where(x => x.CompetitionId == competition.Id && x.IsRequired).Select(x => x.Id).ToListAsync(cancellationToken);
+            if (requiredSocialActions.Count > 0)
+            {
+                var verified = await DbContext.ParticipantSocialActionVerifications
+                    .Where(x => x.CompetitionId == competition.Id && x.ParticipantId == socialParticipant.Id && x.Status == "Verified")
+                    .Select(x => x.RequirementId).ToListAsync(cancellationToken);
+                if (requiredSocialActions.Except(verified).Any()) throw new InvalidOperationException("Complete all required social actions before entering.");
+            }
+        }
+        else if (!allowedAuthProviders.Contains("Email"))
+        {
+            throw new UnauthorizedAccessException("Connect an enabled social account before entering this competition.");
+        }
+
+        var effectiveEmail = Normalize(socialParticipant?.PrimaryEmail ?? request.Email);
+        var effectivePhone = Normalize(socialParticipant?.PrimaryPhone ?? request.Phone);
+        var effectiveDateOfBirth = socialParticipant?.DateOfBirth ?? request.DateOfBirth;
+        var effectiveCountry = socialParticipant?.CountryCode ?? NormalizeCountry(request.CountryCode);
+        if (competition.RequiresEmailVerification && string.IsNullOrWhiteSpace(effectiveEmail))
+            throw new InvalidOperationException("Email is required for this competition.");
+        if (competition.RequiresPhoneVerification && string.IsNullOrWhiteSpace(effectivePhone))
+            throw new InvalidOperationException("Phone number is required for this competition.");
+        ValidateEligibility(competition, effectiveDateOfBirth, effectiveCountry, now);
 
         var fields = await DbContext.CompetitionFields.Where(x => x.CompetitionId == competition.Id).ToListAsync(cancellationToken);
         foreach (var required in fields.Where(x => x.IsRequired))
@@ -90,9 +125,9 @@ public sealed class EntryService(
         }
 
         await using var transaction = await DbContext.Database.BeginTransactionAsync(cancellationToken);
-        var email = Normalize(request.Email);
-        var phone = Normalize(request.Phone);
-        var participant = await DbContext.Participants.SingleOrDefaultAsync(x =>
+        var email = effectiveEmail;
+        var phone = effectivePhone;
+        var participant = socialParticipant ?? await DbContext.Participants.SingleOrDefaultAsync(x =>
                 (!string.IsNullOrEmpty(email) && x.PrimaryEmail == email)
                 || (!string.IsNullOrEmpty(phone) && x.PrimaryPhone == phone),
             cancellationToken);
@@ -117,8 +152,10 @@ public sealed class EntryService(
         }
         else
         {
-            participant.DateOfBirth ??= request.DateOfBirth;
-            participant.CountryCode ??= NormalizeCountry(request.CountryCode);
+            participant.PrimaryEmail ??= email;
+            participant.PrimaryPhone ??= phone;
+            participant.DateOfBirth ??= effectiveDateOfBirth;
+            participant.CountryCode ??= effectiveCountry;
             participant.UpdatedAt = now;
         }
 
@@ -130,7 +167,11 @@ public sealed class EntryService(
         var evaluation = await fraud.EvaluateAsync(new FraudEvaluationRequest(competition.Id, email, phone, ipHash, deviceHash, request.FormStartedAt, now), cancellationToken);
         var riskScore = evaluation.Score;
 
-        var requiresVerification = competition.RequiresEmailVerification || competition.RequiresPhoneVerification;
+        var socialEmailVerified = participantIdentity?.EmailVerified == true
+            && !string.IsNullOrWhiteSpace(participantIdentity.ProviderEmail)
+            && string.Equals(participantIdentity.ProviderEmail, email, StringComparison.OrdinalIgnoreCase);
+        var requiresEmailVerification = competition.RequiresEmailVerification && !socialEmailVerified;
+        var requiresVerification = requiresEmailVerification || competition.RequiresPhoneVerification;
         var postVerificationStatus = competition.RequiresManualApproval || riskScore > 0 ? CompetitionEntryStatus.UnderReview : CompetitionEntryStatus.Approved;
 
         var entry = new CompetitionEntry
@@ -139,8 +180,10 @@ public sealed class EntryService(
             TenantId = TenantContext.TenantId,
             CompetitionId = competition.Id,
             ParticipantId = participant.Id,
+            ParticipantIdentityId = participantIdentity?.Id,
+            EntryMethod = participantIdentity?.Provider ?? "Email",
             EntryReference = await NextReferenceAsync(cancellationToken),
-            Status = evaluation.ShouldBlock ? CompetitionEntryStatus.Rejected : competition.RequiresEmailVerification ? CompetitionEntryStatus.EmailVerificationPending
+            Status = evaluation.ShouldBlock ? CompetitionEntryStatus.Rejected : requiresEmailVerification ? CompetitionEntryStatus.EmailVerificationPending
                 : competition.RequiresPhoneVerification ? CompetitionEntryStatus.PhoneVerificationPending : postVerificationStatus,
             EligibilityStatus = evaluation.ShouldBlock ? EligibilityStatus.Ineligible : requiresVerification || competition.RequiresManualApproval || riskScore > 0 ? EligibilityStatus.PendingReview : EligibilityStatus.Eligible,
             RiskScore = riskScore,
@@ -226,7 +269,7 @@ public sealed class EntryService(
 
         string? emailCode = null;
         string? phoneCode = null;
-        if (competition.RequiresEmailVerification && !evaluation.ShouldBlock)
+        if (requiresEmailVerification && !evaluation.ShouldBlock)
         {
             emailCode = GenerateCode();
             AddVerification(entry, "Email", emailCode, now);
@@ -235,6 +278,12 @@ public sealed class EntryService(
         {
             phoneCode = GenerateCode();
             AddVerification(entry, "Phone", phoneCode, now);
+        }
+
+        if (participantSession is not null)
+        {
+            participantSession.ConsumedAt = now;
+            participantSession.EntryId = entry.Id;
         }
 
         await DbContext.SaveChangesAsync(cancellationToken);
@@ -366,19 +415,24 @@ public sealed class EntryService(
         TokenHash = Hash(code), ExpiresAt = now.AddMinutes(15), CreatedAt = now
     });
 
-    private static void ValidateEligibility(Competition competition, SubmitEntryRequest request, DateTimeOffset now)
+    private static void ValidateEligibility(Competition competition, DateOnly? dateOfBirth, string? countryCode, DateTimeOffset now)
     {
         if (competition.MinimumAge is not null)
         {
-            if (request.DateOfBirth is null) throw new InvalidOperationException("Date of birth is required for this competition.");
+            if (dateOfBirth is null) throw new InvalidOperationException("Date of birth is required for this competition.");
             var today = DateOnly.FromDateTime(now.UtcDateTime);
-            var age = today.Year - request.DateOfBirth.Value.Year;
-            if (request.DateOfBirth.Value > today.AddYears(-age)) age--;
+            var age = today.Year - dateOfBirth.Value.Year;
+            if (dateOfBirth.Value > today.AddYears(-age)) age--;
             if (age < competition.MinimumAge) throw new InvalidOperationException("Participant does not meet the minimum age requirement.");
         }
         var countries = JsonSerializer.Deserialize<string[]>(competition.AllowedCountryCodesJson) ?? [];
-        if (countries.Length > 0 && (string.IsNullOrWhiteSpace(request.CountryCode) || !countries.Contains(request.CountryCode.Trim(), StringComparer.OrdinalIgnoreCase)))
+        if (countries.Length > 0 && (string.IsNullOrWhiteSpace(countryCode) || !countries.Contains(countryCode.Trim(), StringComparer.OrdinalIgnoreCase)))
             throw new InvalidOperationException("Participant country is not eligible for this competition.");
+    }
+    private static HashSet<string> ParseAuthProviders(string json)
+    {
+        try { return (JsonSerializer.Deserialize<string[]>(json) ?? ["Email"]).ToHashSet(StringComparer.OrdinalIgnoreCase); }
+        catch (JsonException) { return new HashSet<string>(["Email"], StringComparer.OrdinalIgnoreCase); }
     }
     private static EntryResponse ToResponse(CompetitionEntry entry) => new(entry.Id, entry.CompetitionId, entry.EntryReference, entry.Status.ToString(), entry.EligibilityStatus.ToString(), entry.RiskScore, entry.RiskLevel.ToString(), entry.SubmittedAt, entry.RejectedReason);
 }

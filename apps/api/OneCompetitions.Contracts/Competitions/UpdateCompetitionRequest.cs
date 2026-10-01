@@ -13,4 +13,5 @@ public sealed record UpdateCompetitionRequest(
     int? MinimumAge = null,
     IReadOnlyList<string>? AllowedCountryCodes = null,
     bool RequiresEmailVerification = false,
-    bool RequiresPhoneVerification = false);
+    bool RequiresPhoneVerification = false,
+    IReadOnlyList<string>? AllowedParticipantAuthProviders = null);

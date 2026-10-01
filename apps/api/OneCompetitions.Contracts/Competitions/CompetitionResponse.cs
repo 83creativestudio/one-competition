@@ -5,6 +5,7 @@ public sealed record CompetitionResponse(
     Guid TenantId,
     string Name,
     string Slug,
+    string? Description,
     string Status,
     string CompetitionType,
     string DefaultLanguage,
@@ -20,5 +21,6 @@ public sealed record CompetitionResponse(
     IReadOnlyList<string> AllowedCountryCodes,
     bool RequiresEmailVerification,
     bool RequiresPhoneVerification,
+    IReadOnlyList<string> AllowedParticipantAuthProviders,
     DateTimeOffset? PublishedAt,
     DateTimeOffset? ClosedAt);
