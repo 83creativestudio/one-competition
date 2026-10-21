@@ -135,6 +135,71 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .login-links a:hover { text-decoration: underline; }
 .account-dialog { width: min(560px, calc(100% - 32px)); max-height: calc(100dvh - 48px); margin: auto; padding: 28px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: white; overflow-y: auto; }
 .account-dialog::backdrop { background: rgba(20, 30, 42, .45); }
+.brand-public { min-height: 100dvh; display: flex; flex-direction: column; font-family: Arial, Helvetica, sans-serif; letter-spacing: 0; }
+.brand-public-container { width: min(1184px, calc(100% - 64px)); margin-inline: auto; }
+.brand-public-masthead { background: #17191b; color: #fff; border-bottom: 4px solid var(--public-brand); }
+.brand-public-header { min-height: 128px; display: flex; align-items: center; justify-content: space-between; gap: 32px; }
+.brand-public-logo-link { display: flex; align-items: center; max-width: 65%; padding-block: 24px; }
+.brand-public-logo { display: block; width: 252px; height: 72px; object-fit: contain; object-position: left center; }
+.brand-public-wordmark { font-size: 28px; font-weight: 700; overflow-wrap: anywhere; }
+.brand-public-header-link { display: inline-flex; align-items: center; gap: 10px; font-size: 13px; color: #e1e3e5; }
+.brand-public-header-link:hover { color: #fff; }
+.brand-public-body { flex: 1; }
+.brand-public-intro { padding-block: 56px 40px; max-width: 800px; }
+.brand-public-eyebrow { display: flex; align-items: center; gap: 9px; font-size: 12px; font-weight: 600; color: #62676e; }
+.brand-public-eyebrow > span { width: 6px; height: 6px; border-radius: 50%; background: var(--public-brand); flex: 0 0 auto; }
+.brand-public-intro h1 { font-size: 42px; line-height: 1.15; font-weight: 700; margin-top: 15px; overflow-wrap: anywhere; }
+.brand-public-intro-copy { max-width: 620px; margin-top: 16px; font-size: 16px; line-height: 1.7; color: #62676e; }
+.brand-public-directory { scroll-margin-top: 24px; }
+.brand-public-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; border-bottom: 1px solid #e5e7e9; padding-block: 18px; }
+.brand-public-section-heading h2 { font-size: 20px; line-height: 1.4; font-weight: 600; }
+.brand-public-section-heading > span { font-size: 13px; color: #72777e; white-space: nowrap; }
+.brand-public-empty { display: flex; min-height: 320px; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 44px 20px; }
+.brand-public-empty-icon { display: grid; place-items: center; width: 72px; height: 72px; border: 1px solid #e4e6e8; border-radius: 50%; background: #f7f8f9; color: var(--public-brand); }
+.brand-public-empty h3 { margin-top: 23px; font-size: 23px; line-height: 1.4; font-weight: 600; }
+.brand-public-empty p { max-width: 460px; margin-top: 12px; font-size: 14px; line-height: 1.8; color: #72777e; }
+.brand-public-back { display: inline-flex; align-items: center; gap: 8px; margin-top: 20px; color: var(--public-brand); font-size: 14px; font-weight: 600; }
+.brand-public-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; padding-block: 28px 40px; }
+.brand-public-competition { display: flex; min-width: 0; flex-direction: column; overflow: hidden; border: 1px solid #e5e7e9; border-radius: 8px; background: #fff; color: #191c20; }
+.brand-public-competition-image { display: grid; place-items: center; aspect-ratio: 16 / 10; width: 100%; overflow: hidden; background: #f5f6f7; color: #c4c7cb; }
+.brand-public-competition-image-logo { background: #17191b; padding: 30px; }
+.brand-public-cover { width: 100%; height: 100%; max-height: 100%; object-fit: contain; }
+.brand-public-competition-copy { display: flex; flex: 1; flex-direction: column; padding: 24px; }
+.brand-public-status { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; color: #6c727a; }
+.brand-public-status > span { height: 6px; width: 6px; background: currentColor; border-radius: 50%; }
+.brand-public-status-open { color: #137352; }
+.brand-public-competition h3 { margin-top: 14px; font-size: 21px; line-height: 1.4; font-weight: 600; overflow-wrap: anywhere; }
+.brand-public-competition h3 a:hover { text-decoration: underline; text-underline-offset: 4px; }
+.brand-public-description { margin-top: 12px; font-size: 14px; line-height: 1.7; color: #697079; white-space: pre-wrap; overflow-wrap: anywhere; }
+.brand-public-date { display: flex; align-items: center; gap: 8px; margin-top: 22px; font-size: 12px; color: #737982; }
+.brand-public-competition-cta { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: auto; padding-top: 24px; color: var(--public-brand); font-size: 14px; font-weight: 600; }
+.brand-public-pagination { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-block: 18px 32px; font-size: 13px; }
+.brand-public-pagination a { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }
+.brand-public-organiser { display: flex; align-items: center; justify-content: center; gap: 9px; border-top: 1px solid #e5e7e9; padding-block: 25px; color: #72777e; font-size: 12px; }
+.brand-public-organiser strong { color: #42474e; font-weight: 600; }
+.brand-public-footer { margin-top: 22px; border-top: 1px solid #e9ebed; background: #f8f9fa; color: #737982; font-size: 12px; }
+.brand-public-footer > div { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; min-height: 76px; padding-block: 22px; }
+.brand-public-skip { position: fixed; left: 16px; top: -80px; z-index: 50; padding: 12px 18px; background: #fff; color: #17191b; border: 1px solid #ddd; border-radius: 4px; }
+.brand-public-skip:focus { top: 12px; }
+.brand-public a:focus-visible { outline: 2px solid #848c96; outline-offset: 5px; }
+@media (max-width: 900px) { .brand-public-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) {
+  .brand-public-container { width: calc(100% - 40px); }
+  .brand-public-header { min-height: 100px; gap: 16px; }
+  .brand-public-logo-link { max-width: calc(100% - 44px); padding-block: 18px; }
+  .brand-public-logo { width: 210px; max-width: 100%; height: 60px; }
+  .brand-public-header-link { padding: 10px; }
+  .brand-public-header-link span { display: none; }
+  .brand-public-intro { padding-block: 36px 26px; }
+  .brand-public-intro h1 { font-size: 32px; }
+  .brand-public-intro-copy { font-size: 14px; }
+  .brand-public-grid { grid-template-columns: minmax(0, 1fr); gap: 20px; padding-top: 22px; }
+  .brand-public-empty { min-height: 300px; padding: 36px 8px; }
+  .brand-public-empty h3 { font-size: 21px; }
+  .brand-public-empty p { font-size: 13px; }
+  .brand-public-organiser { align-items: flex-start; justify-content: flex-start; line-height: 1.7; }
+  .brand-public-organiser svg { flex-shrink: 0; margin-top: 1px; }
+}
 @media (max-width: 480px) { .login-panel { padding: 25px 22px; } .login-title { font-size: 28px; } }
 
 @media (max-width: 1023px) {
