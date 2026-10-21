@@ -36,6 +36,7 @@ public sealed class BrandProfileService(
     {
         await EnsureTenantManagerAsync(userId, cancellationToken);
         Validate(request);
+        await ValidateLogoAsync(request.LogoAssetId, cancellationToken);
 
         var now = DateTimeOffset.UtcNow;
         var profile = new BrandProfile
@@ -43,6 +44,7 @@ public sealed class BrandProfileService(
             Id = Guid.NewGuid(),
             TenantId = tenantContext.TenantId,
             Name = request.Name.Trim(),
+            LogoAssetId = request.LogoAssetId,
             PrimaryColor = request.PrimaryColor,
             SecondaryColor = request.SecondaryColor,
             AccentColor = request.AccentColor,
@@ -82,11 +84,13 @@ public sealed class BrandProfileService(
     {
         await EnsureTenantManagerAsync(userId, cancellationToken);
         Validate(request);
+        await ValidateLogoAsync(request.LogoAssetId, cancellationToken);
 
         var profile = await dbContext.BrandProfiles.SingleOrDefaultAsync(x => x.Id == brandId, cancellationToken)
             ?? throw new InvalidOperationException("Brand profile was not found.");
 
         profile.Name = request.Name.Trim();
+        profile.LogoAssetId = request.LogoAssetId;
         profile.PrimaryColor = request.PrimaryColor;
         profile.SecondaryColor = request.SecondaryColor;
         profile.AccentColor = request.AccentColor;
@@ -116,6 +120,8 @@ public sealed class BrandProfileService(
         var profile = await dbContext.BrandProfiles.SingleOrDefaultAsync(x => x.Id == brandId, cancellationToken)
             ?? throw new InvalidOperationException("Brand profile was not found.");
 
+        if (await dbContext.Competitions.AnyAsync(x => x.TenantId == tenantContext.TenantId && x.BrandProfileId == brandId, cancellationToken))
+            throw new InvalidOperationException("Reassign this brand's competitions before deleting it.");
         profile.DeletedAt = DateTimeOffset.UtcNow;
         profile.UpdatedAt = DateTimeOffset.UtcNow;
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -174,7 +180,46 @@ public sealed class BrandProfileService(
             brand.ButtonStyle,
             brand.BorderRadius,
             brand.FooterText,
-            brand.ShowPoweredBy);
+            brand.ShowPoweredBy,
+            brand.LogoAssetId);
+    }
+
+    public async Task<PublicBrandResponse?> GetPublicBrandAsync(Guid brandId, int page, CancellationToken cancellationToken)
+    {
+        if (!tenantContext.IsResolved) return null;
+        var brand = await dbContext.BrandProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.Id == brandId && x.TenantId == tenantContext.TenantId, cancellationToken);
+        if (brand is null) return null;
+        page = Math.Clamp(page, 1, 10000);
+        var query = dbContext.Competitions.Where(x => x.TenantId == tenantContext.TenantId && x.BrandProfileId == brandId
+            && x.PublishedAt != null && x.Status != OneCompetitions.Domain.Competitions.CompetitionStatus.Archived
+            && x.Status != OneCompetitions.Domain.Competitions.CompetitionStatus.Cancelled);
+        var total = await query.CountAsync(cancellationToken);
+        var competitions = await query.OrderBy(x => x.Name).ThenBy(x => x.Id).Skip((page - 1) * 24).Take(24).AsNoTracking().ToListAsync(cancellationToken);
+        var result = new List<BrandCompetitionResponse>();
+        foreach (var competition in competitions)
+        {
+            var content = await dbContext.CompetitionPages.AsNoTracking().SingleOrDefaultAsync(x => x.CompetitionId == competition.Id && x.LanguageCode == competition.DefaultLanguage, cancellationToken);
+            var published = content is null ? null : CompetitionPageContent.Published(content);
+            Guid? cover = null;
+            if (published is not null)
+            {
+                var mediaIds = CompetitionPageContent.MediaIds(published.LayoutJson);
+                cover = await dbContext.Assets.Where(x => mediaIds.Contains(x.Id) && x.TenantId == tenantContext.TenantId
+                    && x.MimeType.StartsWith("image/") && x.ScanStatus == "Clean" && x.DeletedAt == null)
+                    .OrderBy(x => x.Id).Select(x => (Guid?)x.Id).FirstOrDefaultAsync(cancellationToken);
+            }
+            result.Add(new(competition.Name, competition.Slug, competition.Description, competition.Status.ToString(), competition.StartsAt, competition.EndsAt, cover));
+        }
+        return new(tenantContext.TenantSlug, new(brand.Id, brand.Name, brand.LogoAssetId, brand.PrimaryColor, brand.BackgroundColor, brand.TextColor),
+            brand.FooterText, result, total, page, 24);
+    }
+
+    private async Task ValidateLogoAsync(Guid? assetId, CancellationToken cancellationToken)
+    {
+        if (assetId is null) return;
+        if (!await dbContext.Assets.AnyAsync(x => x.Id == assetId && x.TenantId == tenantContext.TenantId && x.CompetitionId == null
+            && x.EntryId == null && x.DeletedAt == null && x.ScanStatus == "Clean" && x.MimeType.StartsWith("image/"), cancellationToken))
+            throw new InvalidOperationException("Choose a completed image upload from this client's brand assets.");
     }
 
     private async Task EnsureTenantManagerAsync(Guid userId, CancellationToken cancellationToken)
@@ -279,6 +324,7 @@ public sealed class BrandProfileService(
             profile.ShowPoweredBy,
             profile.CustomCss,
             profile.CreatedAt,
-            profile.UpdatedAt);
+            profile.UpdatedAt,
+            profile.LogoAssetId);
     }
 }

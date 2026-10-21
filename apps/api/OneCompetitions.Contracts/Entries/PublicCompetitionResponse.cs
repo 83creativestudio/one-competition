@@ -21,4 +21,5 @@ public sealed record PublicCompetitionResponse(
     IReadOnlyList<SocialActionRequirementResponse> SocialActions,
     IReadOnlyList<CompetitionFieldResponse> Fields,
     IReadOnlyList<PublicConsentResponse> Consents,
-    CompetitionPageResponse? Page);
+    CompetitionPageResponse? Page,
+    OneCompetitions.Contracts.Branding.PublicBrandIdentityResponse? Brand = null);

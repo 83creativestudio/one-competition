@@ -20,4 +20,6 @@ public interface ICompetitionService
     Task<RulesVersionResponse> AddRulesAsync(Guid userId, Guid competitionId, CreateRulesVersionRequest request, CancellationToken cancellationToken);
     Task<CompetitionPageResponse> UpsertPageAsync(Guid userId, Guid competitionId, UpsertCompetitionPageRequest request, CancellationToken cancellationToken);
     Task<PublicCompetitionResponse?> GetPublicAsync(string slug, CancellationToken cancellationToken);
+    Task<CompetitionPageResponse?> GetPageAsync(Guid userId, Guid competitionId, string language, CancellationToken cancellationToken);
+    Task<CompetitionResponse> SetBrandAsync(Guid userId, Guid competitionId, Guid? brandId, CancellationToken cancellationToken);
 }

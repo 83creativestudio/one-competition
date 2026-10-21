@@ -12,6 +12,7 @@ public sealed class CompetitionPage
     public string? SeoDescription { get; set; }
     public Guid? OpenGraphAssetId { get; set; }
     public string LayoutJson { get; set; } = "{\"schemaVersion\":1,\"blocks\":[]}";
+    public string? PublishedContentJson { get; set; }
     public int PublishedVersion { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }

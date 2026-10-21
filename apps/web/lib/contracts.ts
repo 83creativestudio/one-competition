@@ -11,6 +11,7 @@ export type SessionUser = {
   tenants: AuthTenant[];
 };
 export type Competition = {
+  brandProfileId?: string;
   id: string;
   tenantId: string;
   name: string;
@@ -55,6 +56,7 @@ export type Domain = {
   updatedAt: string;
 };
 export type Brand = {
+  logoAssetId?: string;
   id: string;
   tenantId: string;
   name: string;
@@ -217,12 +219,16 @@ export type PlatformTenantDetail = { tenant: Tenant; activeUsers: number; domain
 export type ConsentDefinition = { id: string; competitionId: string; consentType: string; languageCode: string; text: string; isRequired: boolean; version: number; createdAt: string };
 export type PublicConsent = { id: string; consentType: string; languageCode: string; text: string; isRequired: boolean; version: number };
 export type PublicCompetition = {
+  brand?: PublicBrandIdentity;
   competitionId: string; tenantId: string; tenantSlug: string; name: string; slug: string; status: string; startsAt: string; endsAt: string;
   minimumAge?: number; allowedCountryCodes: string[]; requiresEmailVerification: boolean; requiresPhoneVerification: boolean; allowEmailEntry: boolean;
   socialAuthProviders: SocialAuthProvider[]; socialActions: SocialActionRequirement[];
   fields: CompetitionField[]; consents: PublicConsent[]; page?: { title: string; seoTitle?: string; seoDescription?: string; layoutJson: string };
 };
 export type SocialAuthProvider = { provider: string; displayName: string; isConfigured: boolean; supportedActions: string[] };
+export type PublicBrandIdentity = { id: string; name: string; logoAssetId?: string; primaryColor: string; backgroundColor: string; textColor: string };
+export type PublicBrand = { tenantSlug: string; brand: PublicBrandIdentity; footerText?: string; total: number; page: number; pageSize: number;
+  competitions: { name: string; slug: string; description?: string; status: string; startsAt: string; endsAt: string; coverAssetId?: string }[] };
 export type SocialActionRequirement = { id: string; provider: string; actionType: string; targetReference: string; description?: string; isRequired: boolean; supportsAutomatedVerification: boolean; status?: string };
 export type ParticipantSocialSession = { provider: string; email?: string; displayName?: string; userName?: string; actions: SocialActionRequirement[] };
 export type FraudRule = { id: string; name: string; ruleType: string; configurationJson: string; scoreImpact: number; action: string; isEnabled: boolean };

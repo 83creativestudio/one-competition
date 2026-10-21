@@ -23,4 +23,5 @@ public sealed record CompetitionResponse(
     bool RequiresPhoneVerification,
     IReadOnlyList<string> AllowedParticipantAuthProviders,
     DateTimeOffset? PublishedAt,
-    DateTimeOffset? ClosedAt);
+    DateTimeOffset? ClosedAt,
+    Guid? BrandProfileId = null);

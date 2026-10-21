@@ -13,4 +13,5 @@ public interface IBrandProfileService
     Task<BrandProfileResponse> UpdateAsync(Guid userId, Guid brandId, UpsertBrandProfileRequest request, CancellationToken cancellationToken);
     Task DeleteAsync(Guid userId, Guid brandId, CancellationToken cancellationToken);
     Task<PublicThemeResponse?> GetPublicThemeAsync(CancellationToken cancellationToken);
+    Task<PublicBrandResponse?> GetPublicBrandAsync(Guid brandId, int page, CancellationToken cancellationToken);
 }

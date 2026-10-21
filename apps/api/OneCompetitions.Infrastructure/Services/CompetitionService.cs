@@ -9,6 +9,7 @@ using OneCompetitions.Application.Competitions;
 using OneCompetitions.Application.SocialAuth;
 using OneCompetitions.Application.Tenants;
 using OneCompetitions.Contracts.Competitions;
+using OneCompetitions.Contracts.Branding;
 using OneCompetitions.Contracts.Entries;
 using OneCompetitions.Contracts.SocialAuth;
 using OneCompetitions.Domain.Competitions;
@@ -140,16 +141,22 @@ public sealed class CompetitionService(
         }
 
         var now = DateTimeOffset.UtcNow;
+        var firstPublication = competition.PublishedAt is null;
         competition.PublishedAt ??= now;
         competition.PublishedByUserId = userId;
-        competition.Status = now < competition.StartsAt ? CompetitionStatus.Scheduled : CompetitionStatus.Live;
+        if (firstPublication)
+            competition.Status = now < competition.StartsAt ? CompetitionStatus.Scheduled :
+                now >= competition.EndsAt ? CompetitionStatus.Closed : CompetitionStatus.Live;
         competition.UpdatedAt = now;
 
         await CreateVersionAsync(competition, userId, "Published competition configuration.", cancellationToken);
-        var page = await DbContext.CompetitionPages.SingleOrDefaultAsync(x => x.CompetitionId == competition.Id && x.LanguageCode == competition.DefaultLanguage, cancellationToken);
-        if (page is not null)
+        var pages = await DbContext.CompetitionPages.Where(x => x.CompetitionId == competition.Id).ToListAsync(cancellationToken);
+        foreach (var page in pages)
         {
+            await CompetitionPageContent.ValidateAsync(DbContext, TenantContext.TenantId, competition.Id,
+                new(page.LanguageCode, page.Title, page.SeoTitle, page.SeoDescription, page.LayoutJson), cancellationToken);
             page.Status = "Published";
+            page.PublishedContentJson = CompetitionPageContent.Snapshot(page);
             page.PublishedVersion += 1;
             page.PublishedAt = now;
             page.UpdatedAt = now;
@@ -279,7 +286,7 @@ public sealed class CompetitionService(
     {
         await EnsureTenantManagerAsync(userId, cancellationToken);
         await EnsureCompetitionAsync(competitionId, cancellationToken);
-        _ = JsonDocument.Parse(request.LayoutJson);
+        await CompetitionPageContent.ValidateAsync(DbContext, TenantContext.TenantId, competitionId, request, cancellationToken);
 
         var language = string.IsNullOrWhiteSpace(request.LanguageCode) ? "en" : request.LanguageCode.Trim().ToLowerInvariant();
         var page = await DbContext.CompetitionPages.SingleOrDefaultAsync(x => x.CompetitionId == competitionId && x.LanguageCode == language, cancellationToken);
@@ -295,6 +302,8 @@ public sealed class CompetitionService(
             DbContext.CompetitionPages.Add(page);
         }
 
+        if (page.PublishedContentJson is null && page.PublishedAt is not null)
+            page.PublishedContentJson = CompetitionPageContent.Snapshot(page);
         page.Title = request.Title.Trim();
         page.SeoTitle = request.SeoTitle;
         page.SeoDescription = request.SeoDescription;
@@ -323,7 +332,12 @@ public sealed class CompetitionService(
         var consentVersions = await DbContext.ConsentDefinitions.Where(x => x.CompetitionId == competition.Id && x.LanguageCode == competition.DefaultLanguage).ToListAsync(cancellationToken);
         var consents = consentVersions.GroupBy(x => x.ConsentType).Select(x => x.OrderByDescending(v => v.Version).First())
             .Select(x => new PublicConsentResponse(x.Id, x.ConsentType.ToString(), x.LanguageCode, x.Text, x.IsRequired, x.Version)).ToList();
-        var page = await DbContext.CompetitionPages.Where(x => x.CompetitionId == competition.Id && x.LanguageCode == competition.DefaultLanguage).Select(x => ToResponse(x)).SingleOrDefaultAsync(cancellationToken);
+        var storedPage = await DbContext.CompetitionPages.SingleOrDefaultAsync(x => x.CompetitionId == competition.Id && x.LanguageCode == competition.DefaultLanguage, cancellationToken);
+        var published = storedPage is null ? null : CompetitionPageContent.Published(storedPage);
+        var page = published is null || storedPage is null ? null : ToResponse(storedPage) with
+            { Title = published.Title, SeoTitle = published.SeoTitle, SeoDescription = published.SeoDescription, LayoutJson = published.LayoutJson, Status = "Published" };
+        var brand = competition.BrandProfileId is null ? null : await DbContext.BrandProfiles.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == competition.BrandProfileId && x.TenantId == TenantContext.TenantId, cancellationToken);
         var allowedProviders = ParseAuthProviders(competition.AllowedParticipantAuthProvidersJson);
         var socialLoginEnabled = await IsSocialLoginEnabledAsync(cancellationToken);
         var publicProviders = socialProviders.All.Where(x => socialLoginEnabled && x.IsConfigured && allowedProviders.Contains(x.Name))
@@ -337,9 +351,33 @@ public sealed class CompetitionService(
             }).ToList();
         return new PublicCompetitionResponse(competition.Id, competition.TenantId, TenantContext.TenantSlug, competition.Name, competition.Slug, competition.Status.ToString(), competition.StartsAt, competition.EndsAt,
             competition.MinimumAge, ParseCountries(competition.AllowedCountryCodesJson), competition.RequiresEmailVerification, competition.RequiresPhoneVerification,
-            allowedProviders.Contains("Email", StringComparer.OrdinalIgnoreCase), publicProviders, socialActions, fields, consents, page);
+            allowedProviders.Contains("Email", StringComparer.OrdinalIgnoreCase), publicProviders, socialActions, fields, consents, page,
+            brand is null ? null : new PublicBrandIdentityResponse(brand.Id, brand.Name, brand.LogoAssetId, brand.PrimaryColor, brand.BackgroundColor, brand.TextColor));
     }
 
+    public async Task<CompetitionPageResponse?> GetPageAsync(Guid userId, Guid competitionId, string language, CancellationToken cancellationToken)
+    {
+        await EnsureTenantManagerAsync(userId, cancellationToken);
+        await EnsureCompetitionAsync(competitionId, cancellationToken);
+        var page = await DbContext.CompetitionPages.SingleOrDefaultAsync(x => x.CompetitionId == competitionId && x.LanguageCode == language, cancellationToken);
+        return page is null ? null : ToResponse(page);
+    }
+
+    public async Task<CompetitionResponse> SetBrandAsync(Guid userId, Guid competitionId, Guid? brandId, CancellationToken cancellationToken)
+    {
+        await EnsureTenantManagerAsync(userId, cancellationToken);
+        var competition = await EnsureCompetitionAsync(competitionId, cancellationToken);
+        if (brandId is not null && !await DbContext.BrandProfiles.AnyAsync(x => x.Id == brandId && x.TenantId == TenantContext.TenantId, cancellationToken))
+            throw new InvalidOperationException("Brand was not found in this client workspace.");
+        if (competition.BrandProfileId == brandId) return ToResponse(competition);
+        if (competition.PublishedAt is not null)
+            await CreateVersionAsync(competition, userId, "Competition brand changed.", cancellationToken);
+        competition.BrandProfileId = brandId;
+        competition.UpdatedAt = DateTimeOffset.UtcNow;
+        await DbContext.SaveChangesAsync(cancellationToken);
+        await AuditAsync(userId, "competition.brand_updated", "Competition", competitionId, cancellationToken);
+        return ToResponse(competition);
+    }
     private async Task<Competition> EnsureCompetitionAsync(Guid competitionId, CancellationToken cancellationToken)
     {
         return await DbContext.Competitions.SingleOrDefaultAsync(x => x.Id == competitionId, cancellationToken)
@@ -353,12 +391,13 @@ public sealed class CompetitionService(
         var rules = await DbContext.CompetitionRulesVersions.Where(x => x.CompetitionId == competition.Id).OrderByDescending(x => x.VersionNumber).FirstOrDefaultAsync(cancellationToken);
         var socialActions = await DbContext.CompetitionSocialActionRequirements.Where(x => x.CompetitionId == competition.Id)
             .OrderBy(x => x.Provider).ThenBy(x => x.ActionType).ToListAsync(cancellationToken);
+        var pages = await DbContext.CompetitionPages.Where(x => x.CompetitionId == competition.Id).ToListAsync(cancellationToken);
         DbContext.CompetitionVersions.Add(new CompetitionVersion
         {
             Id = Guid.NewGuid(),
             CompetitionId = competition.Id,
             VersionNumber = nextVersion + 1,
-            ConfigurationJson = JsonSerializer.Serialize(new { competition.Name, competition.Slug, competition.StartsAt, competition.EndsAt, competition.EntryLimit, competition.NumberOfWinners, competition.NumberOfReserveWinners, competition.MinimumAge, competition.AllowedCountryCodesJson, competition.RequiresEmailVerification, competition.RequiresPhoneVerification, competition.AllowedParticipantAuthProvidersJson, Fields = fields.Select(x => new { x.FieldKey, x.FieldType, x.IsRequired }), SocialActions = socialActions.Select(x => new { x.Provider, x.ActionType, x.TargetReference, x.Description, x.IsRequired }), RulesHash = rules?.ContentHash }),
+            ConfigurationJson = JsonSerializer.Serialize(new { competition.Name, competition.Slug, competition.BrandProfileId, competition.StartsAt, competition.EndsAt, competition.EntryLimit, competition.NumberOfWinners, competition.NumberOfReserveWinners, competition.MinimumAge, competition.AllowedCountryCodesJson, competition.RequiresEmailVerification, competition.RequiresPhoneVerification, competition.AllowedParticipantAuthProvidersJson, Pages = pages.Select(x => new { x.LanguageCode, x.Title, x.SeoTitle, x.SeoDescription, x.LayoutJson }), Fields = fields.Select(x => new { x.FieldKey, x.FieldType, x.IsRequired }), SocialActions = socialActions.Select(x => new { x.Provider, x.ActionType, x.TargetReference, x.Description, x.IsRequired }), RulesHash = rules?.ContentHash }),
             RulesVersionId = rules?.Id,
             CreatedByUserId = userId,
             ChangeSummary = summary,
@@ -460,7 +499,7 @@ public sealed class CompetitionService(
     private static IReadOnlyList<string> ParseCountries(string value) => JsonSerializer.Deserialize<string[]>(value) ?? [];
     private static IReadOnlyList<string> ParseAuthProviders(string value) => JsonSerializer.Deserialize<string[]>(value) ?? ["Email"];
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
-    private static CompetitionResponse ToResponse(Competition competition) => new(competition.Id, competition.TenantId, competition.Name, competition.Slug, competition.Description, competition.Status.ToString(), competition.CompetitionType.ToString(), competition.DefaultLanguage, competition.TimeZone, competition.StartsAt, competition.EndsAt, competition.EntryLimit, competition.PerParticipantEntryLimit, competition.NumberOfWinners, competition.NumberOfReserveWinners, competition.RequiresManualApproval, competition.MinimumAge, ParseCountries(competition.AllowedCountryCodesJson), competition.RequiresEmailVerification, competition.RequiresPhoneVerification, ParseAuthProviders(competition.AllowedParticipantAuthProvidersJson), competition.PublishedAt, competition.ClosedAt);
+    private static CompetitionResponse ToResponse(Competition competition) => new(competition.Id, competition.TenantId, competition.Name, competition.Slug, competition.Description, competition.Status.ToString(), competition.CompetitionType.ToString(), competition.DefaultLanguage, competition.TimeZone, competition.StartsAt, competition.EndsAt, competition.EntryLimit, competition.PerParticipantEntryLimit, competition.NumberOfWinners, competition.NumberOfReserveWinners, competition.RequiresManualApproval, competition.MinimumAge, ParseCountries(competition.AllowedCountryCodesJson), competition.RequiresEmailVerification, competition.RequiresPhoneVerification, ParseAuthProviders(competition.AllowedParticipantAuthProvidersJson), competition.PublishedAt, competition.ClosedAt, competition.BrandProfileId);
     private static CompetitionFieldResponse ToResponse(CompetitionField field) => new(field.Id, field.CompetitionId, field.FieldKey, field.FieldType.ToString(), field.Label, field.Placeholder, field.HelpText, field.IsRequired, field.DisplayOrder, field.ValidationJson, field.OptionsJson, field.IsSensitive, field.IsSearchable, field.IsExportable);
     private static RulesVersionResponse ToResponse(CompetitionRulesVersion rules) => new(rules.Id, rules.CompetitionId, rules.VersionNumber, rules.LanguageCode, rules.Title, rules.Content, rules.ContentHash, rules.EffectiveAt, rules.CreatedAt);
     private static CompetitionPageResponse ToResponse(CompetitionPage page) => new(page.Id, page.CompetitionId, page.LanguageCode, page.Status, page.Title, page.SeoTitle, page.SeoDescription, page.LayoutJson, page.PublishedVersion, page.PublishedAt);

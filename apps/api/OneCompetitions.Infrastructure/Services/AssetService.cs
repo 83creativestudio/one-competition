@@ -22,6 +22,28 @@ public sealed class AssetService(
     IHostEnvironment environment)
     : TenantScopedServiceBase(dbContext, tenantContext, userManager), IAssetService
 {
+    public async Task<(Stream Content, string ContentType)?> OpenPublicMediaAsync(Guid assetId, CancellationToken cancellationToken)
+    {
+        if (!TenantContext.IsResolved) return null;
+        var asset = await DbContext.Assets.AsNoTracking().SingleOrDefaultAsync(x => x.Id == assetId && x.TenantId == TenantContext.TenantId
+            && x.EntryId == null && x.DeletedAt == null && x.ScanStatus == "Clean", cancellationToken);
+        if (asset is null || !(asset.MimeType.StartsWith("image/") || asset.MimeType == "video/mp4")) return null;
+        var visible = await DbContext.BrandProfiles.AnyAsync(x => x.TenantId == TenantContext.TenantId && x.LogoAssetId == assetId, cancellationToken);
+        if (!visible && asset.CompetitionId is not null)
+        {
+            var competition = await DbContext.Competitions.SingleOrDefaultAsync(x => x.Id == asset.CompetitionId && x.TenantId == TenantContext.TenantId
+                && x.PublishedAt != null && x.Status != OneCompetitions.Domain.Competitions.CompetitionStatus.Archived
+                && x.Status != OneCompetitions.Domain.Competitions.CompetitionStatus.Cancelled, cancellationToken);
+            if (competition is not null)
+            {
+                var pages = await DbContext.CompetitionPages.Where(x => x.CompetitionId == competition.Id).ToListAsync(cancellationToken);
+                visible = pages.Select(CompetitionPageContent.Published).Any(x => x is not null && CompetitionPageContent.MediaIds(x.LayoutJson).Contains(assetId));
+            }
+        }
+        if (!visible || !await storage.ExistsAsync(asset.StorageKey, cancellationToken)) return null;
+        return (await storage.OpenReadAsync(asset.StorageKey, cancellationToken), asset.MimeType);
+    }
+
     private static readonly IReadOnlyDictionary<string, string[]> AllowedTypes = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
     {
         ["image/jpeg"] = [".jpg", ".jpeg"],

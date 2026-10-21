@@ -17,4 +17,5 @@ public sealed record UpsertBrandProfileRequest(
     string? SupportEmail,
     string? SupportPhone,
     bool ShowPoweredBy,
-    string? CustomCss);
+    string? CustomCss,
+    Guid? LogoAssetId = null);

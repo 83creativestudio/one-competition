@@ -15,4 +15,5 @@ public sealed record PublicThemeResponse(
     string ButtonStyle,
     int BorderRadius,
     string? FooterText,
-    bool ShowPoweredBy);
+    bool ShowPoweredBy,
+    Guid? LogoAssetId = null);

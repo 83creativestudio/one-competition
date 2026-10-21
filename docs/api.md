@@ -1,5 +1,7 @@
 # API
 
+Brand logos, public brand directories, competition brand assignment, draft-page retrieval and published-media endpoints are documented in [Brands and Competition Media](brands-and-media.md).
+
 Implemented endpoints:
 
 Authentication:

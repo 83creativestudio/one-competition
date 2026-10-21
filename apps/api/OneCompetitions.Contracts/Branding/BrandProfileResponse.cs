@@ -19,4 +19,5 @@ public sealed record BrandProfileResponse(
     bool ShowPoweredBy,
     string? CustomCss,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    Guid? LogoAssetId = null);
