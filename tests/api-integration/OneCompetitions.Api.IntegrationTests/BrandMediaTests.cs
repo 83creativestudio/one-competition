@@ -2,6 +2,11 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using OneCompetitions.Application.Jobs;
+using OneCompetitions.Domain.Privacy;
+using OneCompetitions.Infrastructure.Persistence;
 using OneCompetitions.Contracts.Assets;
 using OneCompetitions.Contracts.Auth;
 using OneCompetitions.Contracts.Branding;
@@ -34,6 +39,17 @@ public sealed class BrandMediaTests
         Assert.Equal(HttpStatusCode.BadRequest, (await admin.PutAsJsonAsync($"/api/competitions/{otherCompetition.Id}/brand", new SetCompetitionBrandRequest(brand.Id))).StatusCode);
         var privateImage = await Upload(owner, null, "image/png", Png);
         Assert.Equal(HttpStatusCode.NotFound, (await anonymous.GetAsync($"/c/one-digital/api/public/media/{privateImage}")).StatusCode);
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            foreach (var asset in await db.Assets.IgnoreQueryFilters().Where(x => x.Id == logo || x.Id == privateImage).ToListAsync())
+                asset.CreatedAt = DateTimeOffset.UtcNow.AddDays(-10);
+            db.DataRetentionPolicies.Add(new DataRetentionPolicy { Id = Guid.NewGuid(), TenantId = brand.TenantId, DeleteUploadsAfterDays = 1 });
+            await db.SaveChangesAsync();
+            await scope.ServiceProvider.GetRequiredService<IPlatformJobProcessor>().RunOnceAsync(CancellationToken.None);
+            Assert.Null((await db.Assets.IgnoreQueryFilters().SingleAsync(x => x.Id == logo)).DeletedAt);
+            Assert.NotNull((await db.Assets.IgnoreQueryFilters().SingleAsync(x => x.Id == privateImage)).DeletedAt);
+        }
     }
 
     [Fact]

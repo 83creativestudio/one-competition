@@ -331,6 +331,19 @@ public sealed class PlatformJobProcessor(
                 .Where(x => x.CreatedAt < uploadCutoff).Take(25).ToList();
             foreach (var asset in assets)
             {
+                if (asset.EntryId is null)
+                {
+                    if (await dbContext.BrandProfiles.IgnoreQueryFilters().AnyAsync(x => x.TenantId == policy.TenantId
+                        && x.DeletedAt == null && x.LogoAssetId == asset.Id, cancellationToken)) continue;
+                    if (asset.CompetitionId is not null && await dbContext.Competitions.IgnoreQueryFilters().AnyAsync(x =>
+                        x.Id == asset.CompetitionId && x.TenantId == policy.TenantId && x.DeletedAt == null, cancellationToken))
+                    {
+                        var pages = await dbContext.CompetitionPages.Where(x => x.CompetitionId == asset.CompetitionId).ToListAsync(cancellationToken);
+                        if (pages.Any(page => CompetitionPageContent.MediaIds(page.LayoutJson).Contains(asset.Id)
+                            || (CompetitionPageContent.Published(page) is { } published
+                                && CompetitionPageContent.MediaIds(published.LayoutJson).Contains(asset.Id)))) continue;
+                    }
+                }
                 await storage.DeleteAsync(asset.StorageKey, cancellationToken);
                 asset.DeletedAt = now;
                 dbContext.AuditEvents.Add(SystemAudit(policy.TenantId, "asset.deleted.retention", "Asset", asset.Id, asset.CompetitionId));

@@ -22,3 +22,5 @@ API additions:
 - Equivalent public APIs without the `/c/{tenantSlug}` prefix work on resolved tenant hosts.
 
 The database migration `AddPublishedCompetitionContent` adds a nullable snapshot column. Existing published pages remain readable, and the first subsequent edit preserves their current content as the published snapshot.
+
+Retention cleanup preserves active brand logos and media referenced by either draft or published competition pages. Unreferenced expired uploads remain eligible for cleanup.
