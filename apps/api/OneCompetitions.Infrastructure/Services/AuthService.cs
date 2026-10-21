@@ -31,8 +31,13 @@ public sealed class AuthService(
     public async Task<AuthResponse> LoginAsync(LoginRequest request, string? ipAddress, string? userAgent, CancellationToken cancellationToken)
     {
         var user = await userManager.FindByEmailAsync(request.Email);
-        if (user is null || !await userManager.CheckPasswordAsync(user, request.Password))
+        if (user is null || !user.IsActive || user.DeletedAt is not null || await userManager.IsLockedOutAsync(user))
         {
+            throw new UnauthorizedAccessException("Invalid email or password.");
+        }
+        if (!await userManager.CheckPasswordAsync(user, request.Password))
+        {
+            await userManager.AccessFailedAsync(user);
             throw new UnauthorizedAccessException("Invalid email or password.");
         }
 
@@ -52,10 +57,12 @@ public sealed class AuthService(
             if (string.IsNullOrWhiteSpace(request.TwoFactorCode)
                 || !await userManager.VerifyTwoFactorTokenAsync(user, TokenOptions.DefaultAuthenticatorProvider, NormalizeCode(request.TwoFactorCode)))
             {
+                await userManager.AccessFailedAsync(user);
                 throw new UnauthorizedAccessException("A valid two-factor authentication code is required.");
             }
         }
 
+        await userManager.ResetAccessFailedCountAsync(user);
         var token = await IssueAsync(user, ipAddress, userAgent, cancellationToken);
         var firstTenant = token.Tenants.FirstOrDefault();
         if (firstTenant is not null)
@@ -75,7 +82,9 @@ public sealed class AuthService(
             .Include(x => x.User)
             .SingleOrDefaultAsync(x => x.RefreshTokenHash == tokenHash, cancellationToken);
 
-        if (session is null || session.User is null || session.RevokedAt is not null || session.ExpiresAt <= DateTimeOffset.UtcNow)
+        if (session is null || session.User is null || !session.User.IsActive || session.User.DeletedAt is not null
+            || !session.User.EmailConfirmed || await userManager.IsLockedOutAsync(session.User)
+            || session.RevokedAt is not null || session.ExpiresAt <= DateTimeOffset.UtcNow)
         {
             throw new UnauthorizedAccessException("Refresh session is invalid.");
         }
@@ -254,6 +263,7 @@ public sealed class AuthService(
             new(JwtRegisteredClaimNames.Email, user.Email ?? string.Empty),
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString("N"))
         };
+        claims.Add(new Claim("security_stamp", user.SecurityStamp ?? string.Empty));
 
         claims.AddRange(roles.Select(role => new Claim(ClaimTypes.Role, role)));
         if (tenantMemberships.Count == 1)
@@ -317,7 +327,8 @@ public sealed class AuthService(
     private async Task<ApplicationUser> ValidateCredentialsAsync(string email, string password)
     {
         var user = await userManager.FindByEmailAsync(email.Trim());
-        if (user is null || !await userManager.CheckPasswordAsync(user, password))
+        if (user is null || !user.IsActive || user.DeletedAt is not null || await userManager.IsLockedOutAsync(user)
+            || !await userManager.CheckPasswordAsync(user, password))
             throw new UnauthorizedAccessException("Invalid email or password.");
         return user;
     }

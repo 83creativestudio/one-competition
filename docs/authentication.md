@@ -10,6 +10,18 @@ Tenant owners can invite, change, suspend, and remove team memberships. Invitati
 
 Authenticator-app MFA uses TOTP. Accounts with platform administration or tenant owner/administrator privileges must enroll before production login and cannot disable MFA while privileged. MFA setup requires the current password; enabling and disabling revoke active sessions. Development and test environments omit mandatory enrollment so seed accounts and automation remain usable.
 
+## Customer Registration and User Administration
+
+`/register` creates a Customer account with a new, isolated tenant and a TenantOwner membership. It never grants a platform role, accepts an existing tenant ID, or signs in an unverified email. The verification link opens `/account/verify-email`; its origin comes from `PUBLIC_APP_URL`, falling back to HTTPS on `PLATFORM_BASE_DOMAIN`. Configure a working email provider and worker to deliver the queued message. Development email providers do not deliver real mail.
+
+`/platform/users` is restricted to PlatformOwner and PlatformAdministrator. Administrators can create accounts with initial passwords, edit names/emails, select Admin or Customer, suspend/reactivate accounts, and delete accounts. Admin maps to PlatformAdministrator; Customer has no platform privileges. Administrator-provisioned accounts are email-confirmed by the trusted administrator. Every new account receives its own organisation workspace. Existing tenant team roles continue to apply within shared workspaces.
+
+Deletion is a soft deletion: access and memberships are revoked while competition ownership and audit references are retained. Self-deletion, self-demotion and removal of the final active administrator are rejected. Updates invalidate refresh sessions and change the Identity security stamp, which the API validates on each JWT request. Deploying this change requires existing users to sign in again because older tokens do not include a security stamp.
+
+The Users table allows administrators to open a customer's workspace. The BFF validates access before setting its HTTP-only tenant cookie; the API independently checks every selected `X-One-Tenant` against an active membership or platform administrator role. Customers cannot select an unrelated workspace.
+
+Database migration `AddAccountAccessStatus` adds `IsActive` (default true for existing users) and nullable `DeletedAt` to Identity users. Apply it before starting the updated API. The development seeder only grants its administrator role when initially creating the account, so it does not undo later role changes.
+
 ## Participant social login
 
 Public competitions can enable Email, Google, Apple, Facebook, X, and TikTok independently. All OAuth callbacks use the central `PLATFORM_AUTH_DOMAIN`; customer domains are return destinations, not provider callback URLs.
@@ -34,3 +46,9 @@ Provider application setup references:
 Google uses OIDC plus PKCE. Apple uses its signed client-secret flow and OIDC nonce validation. Facebook uses OAuth state and Graph profile lookup. X uses OAuth 2.0 Authorization Code with PKCE. TikTok uses Login Kit for Web. Provider credentials are required before a competition enabling that provider can be published.
 
 Social-action checks are capability-based. The current production adapter can verify X Follow and Like actions when the application has the required scopes and API access. Other provider actions may be displayed only as optional instructions; the API rejects them as required because it cannot prove completion. Social participation consent and marketing consent remain separate regardless of login method.
+
+## Administrator Account Support
+
+Platform administrators manage accounts at `/platform/users`. They can create users, edit display names and login emails, assign Admin or Customer access, suspend or delete accounts, set a new password, and unlock failed-login lockouts. Password changes use ASP.NET Identity validation and reset tokens internally; passwords are never returned or logged. Password resets and unlocks are audited. Account edits revoke existing access and refresh sessions. MFA remains enabled when an account is unlocked or its password is reset.
+
+Customer accounts receive their own organisation and TenantOwner membership, with no platform administrator role. They can manage that organisation's competitions but cannot access platform user administration or other customer workspaces. Self-demotion and self-deletion by administrators are rejected.

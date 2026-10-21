@@ -47,7 +47,7 @@ public static class DevelopmentSeeder
             ?? configuration["ONECOMPETITIONS_DEMO_PASSWORD"]
             ?? "DevelopmentOnly!ChangeMe123";
 
-        var admin = await userManager.FindByEmailAsync("admin@onecompetitions.local");
+        var admin = await userManager.FindByIdAsync("11111111-1111-1111-1111-111111111111");
         if (admin is null)
         {
             admin = new ApplicationUser
@@ -66,10 +66,6 @@ public static class DevelopmentSeeder
             {
                 throw new InvalidOperationException(string.Join("; ", result.Errors.Select(x => x.Description)));
             }
-        }
-
-        if (!await userManager.IsInRoleAsync(admin, AppRoles.PlatformAdministrator))
-        {
             await userManager.AddToRoleAsync(admin, AppRoles.PlatformAdministrator);
         }
 

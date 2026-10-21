@@ -48,6 +48,7 @@ export default function LoginPage() {
         <button className="command-button login-submit" disabled={isSubmitting} type="submit"><KeyRound size={21} aria-hidden="true" />{isSubmitting ? "Signing in..." : "Sign in"}</button>
       </form>
       <div className="login-links"><Link href="/account/password">Reset password</Link><Link href="/account/mfa">Set up MFA</Link></div>
+      <p className="mt-6 text-sm text-muted">New to ONE. Competitions? <Link className="font-semibold text-brand" href="/register">Create an account</Link></p>
     </section>
   </main>;
 }

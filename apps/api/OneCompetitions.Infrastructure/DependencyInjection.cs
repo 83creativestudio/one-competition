@@ -75,6 +75,7 @@ public static class DependencyInjection
             .AddDefaultTokenProviders();
 
         services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IAccountManagementService, AccountManagementService>();
         services.AddScoped<ITenantAccessService, TenantAccessService>();
         services.AddScoped<ITenantDomainService, TenantDomainService>();
         services.AddScoped<IBrandProfileService, BrandProfileService>();

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using OneCompetitions.Api.Security;
 using OneCompetitions.Application.Auth;
 using OneCompetitions.Contracts.Auth;
@@ -8,8 +9,26 @@ namespace OneCompetitions.Api.Controllers;
 
 [ApiController]
 [Route("api/auth")]
-public sealed class AuthController(IAuthService authService) : ControllerBase
+public sealed class AuthController(IAuthService authService, IAccountManagementService accounts) : ControllerBase
 {
+    [HttpPost("register")]
+    [AllowAnonymous]
+    [EnableRateLimiting("registration")]
+    public async Task<IActionResult> Register(RegisterCustomerRequest request, CancellationToken cancellationToken)
+    {
+        await accounts.RegisterAsync(request, cancellationToken);
+        return Accepted(new { message = "Check your email to verify your account. If an account already exists, sign in or reset your password." });
+    }
+
+    [HttpPost("resend-verification")]
+    [AllowAnonymous]
+    [EnableRateLimiting("registration")]
+    public async Task<IActionResult> ResendVerification(ForgotPasswordRequest request, CancellationToken cancellationToken)
+    {
+        await accounts.RequestVerificationAsync(request, cancellationToken);
+        return Accepted();
+    }
+
     [HttpPost("login")]
     [AllowAnonymous]
     public async Task<ActionResult<AuthResponse>> Login(LoginRequest request, CancellationToken cancellationToken)

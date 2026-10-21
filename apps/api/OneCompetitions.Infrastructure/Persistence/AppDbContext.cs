@@ -85,6 +85,7 @@ public sealed class AppDbContext(
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
+        builder.Entity<ApplicationUser>().Property(x => x.IsActive).HasDefaultValue(true);
 
         builder.Entity<Tenant>(entity =>
         {

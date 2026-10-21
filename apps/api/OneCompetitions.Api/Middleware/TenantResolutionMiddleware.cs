@@ -3,6 +3,8 @@ using OneCompetitions.Application.Tenants;
 using OneCompetitions.Domain.Tenants;
 using OneCompetitions.Infrastructure.Persistence;
 using Serilog.Context;
+using System.Security.Claims;
+using OneCompetitions.Application.Auth;
 
 namespace OneCompetitions.Api.Middleware;
 
@@ -87,6 +89,18 @@ public sealed class TenantResolutionMiddleware(RequestDelegate next)
 
     private static async Task<Tenant?> ResolveFromAuthenticatedUserAsync(HttpContext context, AppDbContext dbContext)
     {
+        var selectedSlug = context.Request.Headers["X-One-Tenant"].ToString();
+        if (context.User.Identity?.IsAuthenticated == true && !string.IsNullOrWhiteSpace(selectedSlug))
+        {
+            var selected = await dbContext.Tenants.SingleOrDefaultAsync(x => x.Slug == selectedSlug, context.RequestAborted);
+            if (selected is null) throw new UnauthorizedAccessException("Workspace is not available.");
+            var isAdmin = context.User.IsInRole(AppRoles.PlatformAdministrator) || context.User.IsInRole(AppRoles.PlatformOwner);
+            var userId = Guid.Parse(context.User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+            if (!isAdmin && !await dbContext.TenantUsers.IgnoreQueryFilters().AnyAsync(x => x.TenantId == selected.Id
+                && x.UserId == userId && x.Status == TenantUserStatus.Active, context.RequestAborted))
+                throw new UnauthorizedAccessException("Workspace access is required.");
+            return selected;
+        }
         var tenantIdClaim = context.User.FindFirst("tenant_id")?.Value;
         if (!Guid.TryParse(tenantIdClaim, out var tenantId))
         {

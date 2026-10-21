@@ -4,6 +4,9 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.Identity;
+using OneCompetitions.Infrastructure.Identity;
+using System.Security.Claims;
 using Microsoft.IdentityModel.Tokens;
 using OneCompetitions.Api.Middleware;
 using OneCompetitions.Application.Auth;
@@ -33,6 +36,9 @@ builder.Services.AddHealthChecks();
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("registration", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 5, Window = TimeSpan.FromMinutes(10), QueueLimit = 0 }));
     options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
         RateLimitPartition.GetFixedWindowLimiter(
             context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
@@ -88,17 +94,19 @@ builder.Services
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
             ClockSkew = TimeSpan.FromMinutes(1)
         };
-        if (builder.Environment.IsDevelopment() || builder.Environment.IsEnvironment("Testing"))
+        options.Events = new JwtBearerEvents
         {
-            options.Events = new JwtBearerEvents
+            OnTokenValidated = async context =>
             {
-                OnAuthenticationFailed = context =>
-                {
-                    context.Response.Headers["X-Auth-Error"] = context.Exception.Message;
-                    return Task.CompletedTask;
-                }
-            };
-        }
+                var userManager = context.HttpContext.RequestServices.GetRequiredService<UserManager<ApplicationUser>>();
+                var id = context.Principal?.FindFirstValue(ClaimTypes.NameIdentifier);
+                var user = id is null ? null : await userManager.FindByIdAsync(id);
+                if (user is null || !user.IsActive || user.DeletedAt is not null || !user.EmailConfirmed
+                    || await userManager.IsLockedOutAsync(user)
+                    || context.Principal?.FindFirstValue("security_stamp") != user.SecurityStamp)
+                    context.Fail("Account access has changed. Please sign in again.");
+            }
+        };
     });
 
 builder.Services.AddAuthorization(options =>

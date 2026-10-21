@@ -4,6 +4,8 @@ Implemented endpoints:
 
 Authentication:
 
+- `POST /api/auth/register` creates a Customer account and private workspace, and queues email verification. No role or tenant input is accepted. Limited to five requests per IP per ten minutes.
+- `POST /api/auth/resend-verification` queues another verification link for an active unverified account, using the same registration rate limit and an account-neutral response.
 - `POST /api/auth/login`
 - `POST /api/auth/refresh`
 - `POST /api/auth/logout`
@@ -16,6 +18,14 @@ Authentication:
 - `POST /api/auth/invitations/accept`
 - `GET /api/auth/sessions`
 - `DELETE /api/auth/sessions/{id}`
+
+Platform user administration (PlatformOwner or PlatformAdministrator only):
+
+- `GET /api/platform/users?search=&page=1&pageSize=20` returns a paginated account list (maximum page size 100).
+- `POST /api/platform/users` accepts displayName, email, password, organisationName and role (`Admin` or `Customer`).
+- `PATCH /api/platform/users/{id}` accepts displayName, email, role and isActive; revokes existing sessions.
+- `DELETE /api/platform/users/{id}` soft-deletes an account and revokes access, preserving competition and audit history.
+- `POST /api/session/workspace` is a same-origin Next.js endpoint that validates the requested workspace slug with the API before updating the tenant cookie.
 
 Tenants:
 
@@ -156,3 +166,4 @@ Health:
 - `GET /health/ready`
 
 Swagger is enabled only in development.
+Administrator account updates accept an optional `newPassword` (12-128 characters, validated by Identity) and `unlockLogin` boolean. Both operations require platform administrator permission, revoke existing sessions, and create audit events.

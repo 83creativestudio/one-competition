@@ -6,6 +6,8 @@ public sealed class ApplicationUser : IdentityUser<Guid>
 {
     public string DisplayName { get; set; } = string.Empty;
     public bool IsPlatformUser { get; set; }
+    public bool IsActive { get; set; } = true;
+    public DateTimeOffset? DeletedAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 }

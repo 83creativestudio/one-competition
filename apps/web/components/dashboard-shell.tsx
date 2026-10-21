@@ -29,6 +29,7 @@ const platformGroups = [
   { label: "PLATFORM", items: [
     { label: "Overview", href: "/platform", icon: LayoutDashboard },
     { label: "Tenants", href: "/platform/tenants", icon: Building2 },
+    { label: "Users", href: "/platform/users", icon: Users },
     { label: "Domains", href: "/platform/domains", icon: Globe2 },
     { label: "Plans", href: "/platform/plans", icon: CreditCard },
     { label: "Feature flags", href: "/platform/features", icon: SlidersHorizontal }
