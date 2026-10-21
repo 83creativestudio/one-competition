@@ -38,8 +38,11 @@ public sealed class PlatformAdministrationService(AppDbContext dbContext, ITenan
 
     public async Task<IReadOnlyList<PlatformDomainResponse>> ListDomainsAsync(CancellationToken cancellationToken) =>
         await dbContext.TenantDomains.IgnoreQueryFilters().Where(x => x.DeletedAt == null).Join(dbContext.Tenants.IgnoreQueryFilters(), x => x.TenantId, x => x.Id,
-            (domain, tenant) => new PlatformDomainResponse(domain.Id, tenant.Id, tenant.Name, domain.Hostname, domain.DomainType.ToString(), domain.Status.ToString(), domain.SslStatus, domain.CertificateExpiresAt))
-            .OrderBy(x => x.Hostname).Take(500).ToListAsync(cancellationToken);
+            (domain, tenant) => new { Domain = domain, Tenant = tenant })
+            .OrderBy(x => x.Domain.Hostname).ThenBy(x => x.Domain.Id).Take(500)
+            .Select(x => new PlatformDomainResponse(x.Domain.Id, x.Tenant.Id, x.Tenant.Name, x.Domain.Hostname,
+                x.Domain.DomainType.ToString(), x.Domain.Status.ToString(), x.Domain.SslStatus, x.Domain.CertificateExpiresAt))
+            .ToListAsync(cancellationToken);
 
     public async Task<IReadOnlyList<FeatureFlagResponse>> ListFeaturesAsync(CancellationToken cancellationToken) =>
         await dbContext.FeatureFlags.OrderBy(x => x.Code).Select(x => FeatureResponse(x)).ToListAsync(cancellationToken);

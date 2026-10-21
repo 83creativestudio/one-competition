@@ -130,6 +130,10 @@ public sealed class ProductionReadinessTests : IClassFixture<TestApplicationFact
         var owner = await AuthenticatedAsync("owner@one.local");
         Assert.Equal(HttpStatusCode.Forbidden, (await owner.GetAsync("/api/platform/domains")).StatusCode);
         var admin = await AuthenticatedAsync("admin@onecompetitions.local");
+        var domains = await admin.GetFromJsonAsync<List<PlatformDomainResponse>>("/api/platform/domains") ?? [];
+        Assert.NotEmpty(domains);
+        Assert.True(domains.Count <= 500);
+        Assert.Equal(domains.OrderBy(x => x.Hostname, StringComparer.Ordinal).Select(x => x.Id), domains.Select(x => x.Id));
         var tenants = await admin.GetFromJsonAsync<List<TenantSummaryResponse>>("/api/platform/tenants") ?? [];
         var detail = await admin.GetAsync($"/api/platform/tenants/{tenants[0].Id}");
         detail.EnsureSuccessStatusCode();
