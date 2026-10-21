@@ -4,9 +4,10 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using OneCompetitions.Application.Jobs;
+using OneCompetitions.Application.Locking;
 using OneCompetitions.Domain.Privacy;
 using OneCompetitions.Infrastructure.Persistence;
+using OneCompetitions.Infrastructure.Services;
 using OneCompetitions.Contracts.Assets;
 using OneCompetitions.Contracts.Auth;
 using OneCompetitions.Contracts.Branding;
@@ -46,7 +47,8 @@ public sealed class BrandMediaTests
                 asset.CreatedAt = DateTimeOffset.UtcNow.AddDays(-10);
             db.DataRetentionPolicies.Add(new DataRetentionPolicy { Id = Guid.NewGuid(), TenantId = brand.TenantId, DeleteUploadsAfterDays = 1 });
             await db.SaveChangesAsync();
-            await scope.ServiceProvider.GetRequiredService<IPlatformJobProcessor>().RunOnceAsync(CancellationToken.None);
+            var processor = ActivatorUtilities.CreateInstance<PlatformJobProcessor>(scope.ServiceProvider, new IsolatedTestLocks());
+            await processor.RunOnceAsync(CancellationToken.None);
             Assert.Null((await db.Assets.IgnoreQueryFilters().SingleAsync(x => x.Id == logo)).DeletedAt);
             Assert.NotNull((await db.Assets.IgnoreQueryFilters().SingleAsync(x => x.Id == privateImage)).DeletedAt);
         }
@@ -148,5 +150,13 @@ public sealed class BrandMediaTests
         (await client.PutAsync(upload.UploadUrl, new ByteArrayContent(content))).EnsureSuccessStatusCode();
         (await client.PostAsync($"/api/assets/{upload.AssetId}/complete", null)).EnsureSuccessStatusCode();
         return upload.AssetId;
+    }
+
+    private sealed class IsolatedTestLocks : IDistributedLockProvider
+    {
+        private readonly string prefix = Guid.NewGuid().ToString("N");
+        private readonly InMemoryDistributedLockProvider inner = new();
+        public Task<IAsyncDisposable?> TryAcquireAsync(string resource, TimeSpan lifetime, CancellationToken cancellationToken)
+            => inner.TryAcquireAsync(prefix + resource, lifetime, cancellationToken);
     }
 }
