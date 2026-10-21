@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isAllowedRequestOrigin } from "@/lib/request-origin";
 import { accessCookie, apiBaseUrl, authCookieOptions, participantSessionCookie, refreshCookie, tenantCookie } from "@/lib/server-auth";
 
 async function forward(request: NextRequest, segments: string[]) {
   if (!["GET", "HEAD", "OPTIONS"].includes(request.method)) {
-    const origin = request.headers.get("origin");
-    if (origin && new URL(origin).host !== request.nextUrl.host)
+    if (!isAllowedRequestOrigin(request.headers, request.nextUrl.host))
       return NextResponse.json({ title: "Forbidden", detail: "Cross-site request rejected." }, { status: 403 });
   }
   const jar = request.cookies;

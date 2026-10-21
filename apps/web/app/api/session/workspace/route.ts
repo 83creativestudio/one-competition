@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isAllowedRequestOrigin } from "@/lib/request-origin";
 import { accessCookie, apiBaseUrl, authCookieOptions, tenantCookie } from "@/lib/server-auth";
 
 export async function POST(request: NextRequest) {
-  const origin = request.headers.get("origin");
-  if (!origin || new URL(origin).host !== request.nextUrl.host)
+  if (!isAllowedRequestOrigin(request.headers, request.nextUrl.host, true))
     return NextResponse.json({ detail: "Cross-site request rejected." }, { status: 403 });
   const access = request.cookies.get(accessCookie)?.value;
   if (!access) return NextResponse.json({ detail: "Please sign in again." }, { status: 401 });

@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint . --max-warnings=0",
-    "test": "next typegen && tsc --noEmit"
+    "test": "node --experimental-strip-types --test tests/*.test.mjs && next typegen && tsc --noEmit"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",
