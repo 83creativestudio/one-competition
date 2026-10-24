@@ -3,8 +3,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Check, CheckCircle2, ExternalLink, LoaderCircle, LogIn, ShieldCheck } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import Image from "next/image";
-import Link from "next/link";
+import { PublicBrandHeader } from "@/components/public-brand-header";
 import { apiFetch } from "@/lib/api";
 import { entryEligibilityFields, entryEligibilityValues } from "@/lib/entry-eligibility";
 import type { Entry, ParticipantSocialSession, PublicCompetition, SocialActionRequirement } from "@/lib/contracts";
@@ -94,8 +93,10 @@ export function PublicEntryForm({ competitionSlug, tenantSlug }: { competitionSl
 
   const actions = socialSession?.actions ?? data.socialActions;
   const missingRequiredAction = actions.some(action => action.isRequired && action.status !== "Verified");
-  return <main className="mx-auto max-w-2xl px-5 py-10">
-    <header className="border-b border-line pb-6">{data.brand ? <Link className="inline-flex flex-wrap items-center gap-4" href={`${tenantSlug ? `/c/${tenantSlug}` : ""}/brands/${data.brand.id}`}>{data.brand.logoAssetId && <Image unoptimized src={`/media/${data.tenantSlug}/${data.brand.logoAssetId}`} alt={data.brand.name} width={160} height={80} className="max-h-20 w-40 object-contain" />}<span className="font-semibold" style={{ color: data.brand.primaryColor }}>{data.brand.name}</span></Link> : <div className="text-sm font-semibold text-emerald-800">ONE. Competitions</div>}<h1 className="mt-3 text-3xl font-semibold">{data.name}</h1><p className="mt-2 text-sm text-neutral-700">Entries close {new Date(data.endsAt).toLocaleString()}.</p></header>
+  return <main className="min-h-screen">
+    {data.brand && <PublicBrandHeader brand={data.brand} tenantSlug={data.tenantSlug} href={`${tenantSlug ? `/c/${tenantSlug}` : ""}/brands/${data.brand.id}`} />}
+    <div className="mx-auto max-w-2xl px-5 py-10">
+    <header className="border-b border-line pb-6">{!data.brand && <div className="text-sm font-semibold text-emerald-800">ONE. Competitions</div>}<h1 className="mt-3 text-3xl font-semibold">{data.name}</h1><p className="mt-2 text-sm text-neutral-700">Entries close {new Date(data.endsAt).toLocaleString()}.</p></header>
 
     {data.socialAuthProviders.length > 0 && <section className="border-b border-line py-6" aria-labelledby="social-login-title">
       <h2 id="social-login-title" className="text-base font-semibold">Enter with an account</h2>
@@ -130,6 +131,7 @@ export function PublicEntryForm({ competitionSlug, tenantSlug }: { competitionSl
       {submit.error && <p className="border border-red-200 bg-red-50 p-3 text-sm text-red-700">{submit.error.message}</p>}
       <button className="command-button w-fit" disabled={!captchaToken || submit.isPending || missingRequiredAction}>{submit.isPending ? "Submitting" : "Submit entry"}</button>
     </form> : <p className="mt-6 border border-neutral-200 bg-neutral-50 p-4 text-sm">Connect one of the enabled accounts above to enter.</p>}
+    </div>
   </main>;
 }
 
