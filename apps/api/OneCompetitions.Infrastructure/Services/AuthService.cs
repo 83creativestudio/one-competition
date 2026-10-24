@@ -89,10 +89,18 @@ public sealed class AuthService(
             throw new UnauthorizedAccessException("Refresh session is invalid.");
         }
 
-        session.RevokedAt = DateTimeOffset.UtcNow;
-        await dbContext.SaveChangesAsync(cancellationToken);
+        if (await IsPrivilegedAsync(session.User, cancellationToken) && !session.User.TwoFactorEnabled
+            && !environment.IsDevelopment() && !environment.IsEnvironment("Testing"))
+            throw new UnauthorizedAccessException("Multi-factor authentication enrollment is required for this account.");
 
-        return await IssueAsync(session.User, ipAddress, userAgent, cancellationToken);
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        // Claim the old token atomically: concurrent requests must not both create a replacement.
+        var claimed = await dbContext.UserSessions.Where(x => x.Id == session.Id && x.RevokedAt == null)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.RevokedAt, DateTimeOffset.UtcNow), cancellationToken);
+        if (claimed != 1) throw new UnauthorizedAccessException("Refresh session is invalid.");
+        var response = await IssueAsync(session.User, ipAddress, userAgent, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return response;
     }
 
     public async Task RequestPasswordResetAsync(ForgotPasswordRequest request, CancellationToken cancellationToken)
@@ -137,6 +145,8 @@ public sealed class AuthService(
     public async Task<MfaSetupResponse> BeginMfaSetupAsync(MfaSetupRequest request, CancellationToken cancellationToken)
     {
         var user = await ValidateCredentialsAsync(request.Email, request.Password);
+        if (user.TwoFactorEnabled)
+            throw new InvalidOperationException("Multi-factor authentication is already enabled. Disable it with your current authenticator before enrolling again.");
         var key = await userManager.GetAuthenticatorKeyAsync(user);
         if (string.IsNullOrWhiteSpace(key))
         {
@@ -152,6 +162,8 @@ public sealed class AuthService(
     public async Task EnableMfaAsync(MfaEnableRequest request, CancellationToken cancellationToken)
     {
         var user = await ValidateCredentialsAsync(request.Email, request.Password);
+        if (user.TwoFactorEnabled)
+            throw new InvalidOperationException("Multi-factor authentication is already enabled.");
         if (!await userManager.VerifyTwoFactorTokenAsync(user, TokenOptions.DefaultAuthenticatorProvider, NormalizeCode(request.Code)))
         {
             throw new InvalidOperationException("The authenticator code is invalid.");
@@ -327,9 +339,14 @@ public sealed class AuthService(
     private async Task<ApplicationUser> ValidateCredentialsAsync(string email, string password)
     {
         var user = await userManager.FindByEmailAsync(email.Trim());
-        if (user is null || !user.IsActive || user.DeletedAt is not null || await userManager.IsLockedOutAsync(user)
-            || !await userManager.CheckPasswordAsync(user, password))
+        if (user is null || !user.IsActive || user.DeletedAt is not null || !user.EmailConfirmed
+            || await userManager.IsLockedOutAsync(user))
             throw new UnauthorizedAccessException("Invalid email or password.");
+        if (!await userManager.CheckPasswordAsync(user, password))
+        {
+            await userManager.AccessFailedAsync(user);
+            throw new UnauthorizedAccessException("Invalid email or password.");
+        }
         return user;
     }
 

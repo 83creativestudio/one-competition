@@ -25,6 +25,10 @@ ONE. Competitions is a multi-tenant SaaS platform for competition and giveaway m
 
 ## Prerequisites
 
+For the Omega launch, follow [provider account setup](docs/omega-provider-setup.md)
+and the ordered [launch-readiness gates](docs/omega-launch-readiness.md). Provider
+adapters being implemented does not mean accounts are configured or launch-approved.
+
 - .NET SDK 10.0.x
 - Node.js 22.x and npm 11.x
 - PostgreSQL 17

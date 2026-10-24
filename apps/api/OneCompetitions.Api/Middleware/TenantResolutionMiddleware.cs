@@ -27,8 +27,16 @@ public sealed class TenantResolutionMiddleware(RequestDelegate next)
         var baseDomain = (configuration["PLATFORM_BASE_DOMAIN"] ?? "competitions.local").ToLowerInvariant();
 
         var tenant = await ResolveFromCustomDomainAsync(hostname, dbContext)
-            ?? await ResolveFromPlatformSubdomainAsync(hostname, baseDomain, dbContext)
-            ?? await ResolveFromAuthenticatedUserAsync(context, dbContext)
+            ?? await ResolveFromPlatformSubdomainAsync(hostname, baseDomain, dbContext);
+
+        // A valid user/session cannot turn an unknown or inactive host into a trusted domain.
+        if (tenant is null && ShouldRejectUnknownHost(context, hostname, baseDomain, configuration))
+        {
+            context.Response.StatusCode = StatusCodes.Status404NotFound;
+            await context.Response.WriteAsJsonAsync(new { error = "Unknown or inactive tenant domain." });
+            return;
+        }
+        tenant ??= await ResolveFromAuthenticatedUserAsync(context, dbContext)
             ?? await ResolveFromPathAsync(context, dbContext);
 
         if (tenant is null)
@@ -115,7 +123,10 @@ public sealed class TenantResolutionMiddleware(RequestDelegate next)
         var domain = await dbContext.TenantDomains
             .IgnoreQueryFilters()
             .Include(x => x.Tenant)
-            .SingleOrDefaultAsync(x => x.Hostname == hostname && x.Status == TenantDomainStatus.Active && x.DeletedAt == null);
+            .SingleOrDefaultAsync(x => x.Hostname == hostname && x.DeletedAt == null);
+
+        if (domain is not null && domain.Status != TenantDomainStatus.Active)
+            throw new UnauthorizedAccessException("Tenant domain is not active.");
 
         return domain?.Tenant;
     }

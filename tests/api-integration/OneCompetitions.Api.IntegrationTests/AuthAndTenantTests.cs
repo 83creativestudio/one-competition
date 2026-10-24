@@ -66,6 +66,45 @@ public sealed class AuthAndTenantTests : IClassFixture<TestApplicationFactory>
         Assert.True(response.StatusCode == HttpStatusCode.Forbidden, await DescribeAsync(response));
     }
 
+    [Fact]
+    public async Task Authenticated_user_cannot_bypass_unknown_hostname_rejection()
+    {
+        await _factory.SeedAsync();
+        var client = _factory.CreateClient();
+        var auth = await LoginAsync(client, "owner@one.local");
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", auth.AccessToken);
+        client.DefaultRequestHeaders.Host = "untrusted.example.org";
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/api/tenants/current")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Refresh_token_can_be_rotated_only_once()
+    {
+        await _factory.SeedAsync();
+        var client = _factory.CreateClient();
+        var original = await LoginAsync(client, "owner@one.local");
+        var refreshed = await client.PostAsJsonAsync("/api/auth/refresh", new RefreshRequest(original.RefreshToken));
+        refreshed.EnsureSuccessStatusCode();
+        var replacement = await refreshed.Content.ReadFromJsonAsync<AuthResponse>();
+        Assert.NotNull(replacement);
+        Assert.NotEqual(original.RefreshToken, replacement.RefreshToken);
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await client.PostAsJsonAsync("/api/auth/refresh", new RefreshRequest(original.RefreshToken))).StatusCode);
+        (await client.PostAsJsonAsync("/api/auth/refresh", new RefreshRequest(replacement.RefreshToken))).EnsureSuccessStatusCode();
+    }
+
+    [Fact]
+    public async Task Mfa_setup_password_failures_lock_the_account()
+    {
+        await _factory.SeedAsync();
+        var client = _factory.CreateClient();
+        for (var attempt = 0; attempt < 5; attempt++)
+            Assert.Equal(HttpStatusCode.Unauthorized, (await client.PostAsJsonAsync("/api/auth/mfa/setup",
+                new MfaSetupRequest("owner@omega.local", "WrongPassword!123"))).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.PostAsJsonAsync("/api/auth/login",
+            new LoginRequest("owner@omega.local", "DevelopmentOnly!ChangeMe123"))).StatusCode);
+    }
+
     private static async Task<AuthResponse> LoginAsync(HttpClient client, string email)
     {
         var response = await client.PostAsJsonAsync("/api/auth/login", new LoginRequest(email, "DevelopmentOnly!ChangeMe123"));

@@ -5,7 +5,8 @@
     "apps/web"
   ],
   "scripts": {
-    "test": "npm --workspace apps/web test",
+    "test": "node --test infrastructure/scripts/*.test.mjs && npm --workspace apps/web test",
+    "preflight:omega": "node infrastructure/scripts/omega-preflight.mjs",
     "lint": "npm --workspace apps/web run lint",
     "build": "npm --workspace apps/web run build"
   },

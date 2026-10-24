@@ -48,6 +48,11 @@ public sealed class ProductionReadinessTests : IClassFixture<TestApplicationFact
         var code = Totp(setup.SharedKey);
         var enabled = await anonymous.PostAsJsonAsync("/api/auth/mfa/enable", new MfaEnableRequest(email, "DevelopmentOnly!ChangeMe456", code));
         Assert.Equal(HttpStatusCode.NoContent, enabled.StatusCode);
+        var repeatedSetup = await anonymous.PostAsJsonAsync("/api/auth/mfa/setup", new MfaSetupRequest(email, "DevelopmentOnly!ChangeMe456"));
+        Assert.False(repeatedSetup.IsSuccessStatusCode);
+        Assert.DoesNotContain(setup.SharedKey, await repeatedSetup.Content.ReadAsStringAsync());
+        Assert.False((await anonymous.PostAsJsonAsync("/api/auth/mfa/enable",
+            new MfaEnableRequest(email, "DevelopmentOnly!ChangeMe456", Totp(setup.SharedKey)))).IsSuccessStatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.PostAsJsonAsync("/api/auth/login", new LoginRequest(email, "DevelopmentOnly!ChangeMe456"))).StatusCode);
         var login = await anonymous.PostAsJsonAsync("/api/auth/login", new LoginRequest(email, "DevelopmentOnly!ChangeMe456", Totp(setup.SharedKey)));
         login.EnsureSuccessStatusCode();

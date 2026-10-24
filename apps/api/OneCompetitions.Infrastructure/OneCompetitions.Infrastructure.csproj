@@ -26,6 +26,7 @@
     <PackageReference Include="StackExchange.Redis" Version="3.0.17" />
     <PackageReference Include="Stripe.net" Version="52.1.1" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.19.1" />
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="8.0.2" />
   </ItemGroup>
 
   <PropertyGroup>

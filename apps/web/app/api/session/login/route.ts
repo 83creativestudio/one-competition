@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { accessCookie, apiBaseUrl, authCookieOptions, profileCookie, refreshCookie, tenantCookie } from "@/lib/server-auth";
+import { isAllowedRequestOrigin } from "@/lib/request-origin";
 
 type AuthResponse = { accessToken: string; refreshToken: string; expiresAt: string; userId: string; email: string; roles: string[]; tenants: { slug: string }[] };
 
 export async function POST(request: NextRequest) {
+  if (!isAllowedRequestOrigin(request.headers, request.nextUrl.host, true))
+    return NextResponse.json({ detail: "Cross-site request rejected." }, { status: 403 });
   const body = await request.json();
   const response = await fetch(`${apiBaseUrl()}/api/auth/login`, {
     method: "POST",

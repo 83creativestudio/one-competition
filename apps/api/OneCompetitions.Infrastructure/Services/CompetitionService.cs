@@ -13,6 +13,7 @@ using OneCompetitions.Contracts.Branding;
 using OneCompetitions.Contracts.Entries;
 using OneCompetitions.Contracts.SocialAuth;
 using OneCompetitions.Domain.Competitions;
+using OneCompetitions.Domain.Draws;
 using OneCompetitions.Infrastructure.Identity;
 using OneCompetitions.Infrastructure.Persistence;
 
@@ -40,6 +41,7 @@ public sealed class CompetitionService(
         await EnsureTenantManagerAsync(userId, cancellationToken);
         await planLimits.EnsureAllowedAsync(TenantContext.TenantId, "MaximumActiveCompetitions", 1, cancellationToken);
         ValidateCompetition(request.Name, request.Slug, request.StartsAt, request.EndsAt, request.PerParticipantEntryLimit, request.NumberOfWinners);
+        ValidateSettings(request.EntryLimit, request.NumberOfReserveWinners, request.MinimumAge, request.AllowedCountryCodes);
 
         var now = DateTimeOffset.UtcNow;
         var competition = new Competition
@@ -83,9 +85,16 @@ public sealed class CompetitionService(
     {
         await EnsureTenantManagerAsync(userId, cancellationToken);
         ValidateCompetition(request.Name, "unchanged", request.StartsAt, request.EndsAt, request.PerParticipantEntryLimit, request.NumberOfWinners);
+        ValidateSettings(request.EntryLimit, request.NumberOfReserveWinners, request.MinimumAge, request.AllowedCountryCodes);
 
         var competition = await DbContext.Competitions.SingleOrDefaultAsync(x => x.Id == competitionId, cancellationToken)
             ?? throw new InvalidOperationException("Competition was not found.");
+
+        if (competition.Status is CompetitionStatus.DrawPreparation or CompetitionStatus.DrawApproved
+            or CompetitionStatus.WinnerVerification or CompetitionStatus.Completed or CompetitionStatus.Archived or CompetitionStatus.Cancelled
+            || await DbContext.Draws.AnyAsync(x => x.CompetitionId == competitionId
+                && x.Status != DrawStatus.Cancelled && x.Status != DrawStatus.Invalidated, cancellationToken))
+            throw new InvalidOperationException("Competition settings are locked because the competition is finalised or a draw pool has been prepared.");
 
         if (competition.PublishedAt is not null)
         {
@@ -397,7 +406,7 @@ public sealed class CompetitionService(
             Id = Guid.NewGuid(),
             CompetitionId = competition.Id,
             VersionNumber = nextVersion + 1,
-            ConfigurationJson = JsonSerializer.Serialize(new { competition.Name, competition.Slug, competition.BrandProfileId, competition.StartsAt, competition.EndsAt, competition.EntryLimit, competition.NumberOfWinners, competition.NumberOfReserveWinners, competition.MinimumAge, competition.AllowedCountryCodesJson, competition.RequiresEmailVerification, competition.RequiresPhoneVerification, competition.AllowedParticipantAuthProvidersJson, Pages = pages.Select(x => new { x.LanguageCode, x.Title, x.SeoTitle, x.SeoDescription, x.LayoutJson }), Fields = fields.Select(x => new { x.FieldKey, x.FieldType, x.IsRequired }), SocialActions = socialActions.Select(x => new { x.Provider, x.ActionType, x.TargetReference, x.Description, x.IsRequired }), RulesHash = rules?.ContentHash }),
+            ConfigurationJson = JsonSerializer.Serialize(new { competition.Name, competition.Description, competition.Slug, competition.BrandProfileId, competition.StartsAt, competition.EndsAt, competition.EntryLimit, competition.PerParticipantEntryLimit, competition.RequiresManualApproval, competition.NumberOfWinners, competition.NumberOfReserveWinners, competition.MinimumAge, competition.AllowedCountryCodesJson, competition.RequiresEmailVerification, competition.RequiresPhoneVerification, competition.AllowedParticipantAuthProvidersJson, Pages = pages.Select(x => new { x.LanguageCode, x.Title, x.SeoTitle, x.SeoDescription, x.LayoutJson }), Fields = fields.Select(x => new { x.FieldKey, x.FieldType, x.IsRequired }), SocialActions = socialActions.Select(x => new { x.Provider, x.ActionType, x.TargetReference, x.Description, x.IsRequired }), RulesHash = rules?.ContentHash }),
             RulesVersionId = rules?.Id,
             CreatedByUserId = userId,
             ChangeSummary = summary,
@@ -483,6 +492,15 @@ public sealed class CompetitionService(
         {
             throw new InvalidOperationException("Entry and winner limits must be positive.");
         }
+    }
+
+    private static void ValidateSettings(int? entryLimit, int reserveWinners, int? minimumAge, IReadOnlyList<string>? countries)
+    {
+        if (entryLimit is <= 0) throw new InvalidOperationException("Total entry limit must be positive or left empty.");
+        if (reserveWinners < 0) throw new InvalidOperationException("Reserve winner count cannot be negative.");
+        if (minimumAge is < 0 or > 120) throw new InvalidOperationException("Minimum age must be between 0 and 120.");
+        if (countries?.Any(x => x is null || x.Trim().Length != 2 || !x.Trim().All(char.IsAsciiLetter)) == true)
+            throw new InvalidOperationException("Allowed countries must use two-letter country codes.");
     }
 
     private static string NormalizeSlug(string slug) => slug.Trim().ToLowerInvariant().Replace(' ', '-');

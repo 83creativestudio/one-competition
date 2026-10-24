@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Lock, Radio, Save } from "lucide-react";
+import { Lock, Pencil, Radio, Save } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -26,7 +26,7 @@ export default function CompetitionDetailPage() {
   const item = competition.data;
   const approved = entries.data?.filter(x => x.status === "Approved").length ?? 0;
   return <main className="page">
-    <PageHeading title={item.name} description={`/${item.slug}`} action={<div className="flex gap-2">{item.status === "Draft" && <button className="command-button" disabled={action.isPending} onClick={() => action.mutate("publish")}><Radio size={17} />Publish</button>}{["Live", "Scheduled"].includes(item.status) && <button className="danger-button" disabled={action.isPending} onClick={() => action.mutate("close")}><Lock size={17} />Close</button>}</div>} />
+    <PageHeading title={item.name} description={`/${item.slug}`} action={<div className="flex flex-wrap gap-2"><Link className="secondary-button" href={`/dashboard/competitions/${id}/edit`}><Pencil size={17} />Edit competition</Link>{item.status === "Draft" && <button className="command-button" disabled={action.isPending} onClick={() => action.mutate("publish")}><Radio size={17} />Publish</button>}{["Live", "Scheduled"].includes(item.status) && <button className="danger-button" disabled={action.isPending} onClick={() => action.mutate("close")}><Lock size={17} />Close</button>}</div>} />
     {action.error && <p className="mb-4 text-sm text-red-700">{action.error.message}</p>}
     <section className="grid gap-4 md:grid-cols-4">
       <Metric label="Status" value={<StatusBadge value={item.status} />} /><Metric label="Entries" value={String(entries.data?.length ?? 0)} /><Metric label="Approved" value={String(approved)} /><Metric label="Winner positions" value={`${item.numberOfWinners + item.numberOfReserveWinners}`} />
@@ -34,7 +34,7 @@ export default function CompetitionDetailPage() {
     <section className="mt-5 panel p-5"><h2 className="font-semibold">Schedule and controls</h2><dl className="mt-4 grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-4"><Detail label="Opens" value={formatDate(item.startsAt)} /><Detail label="Closes" value={formatDate(item.endsAt)} /><Detail label="Per participant" value={String(item.perParticipantEntryLimit)} /><Detail label="Approval" value={item.requiresManualApproval ? "Manual" : "Automatic"} /></dl></section>
     <section className="mt-5 panel p-5"><h2 className="font-semibold">Participant login methods</h2><div className="mt-4 grid gap-3 sm:grid-cols-3">{["Email", "Google", "Apple", "Facebook", "X", "TikTok"].map(provider => <label className="flex items-center gap-2 text-sm" key={provider}><input type="checkbox" checked={authProviders.includes(provider)} onChange={event => setAuthProviders(current => event.target.checked ? [...current, provider] : current.filter(value => value !== provider))} />{provider}</label>)}</div>{saveAuth.error && <p className="mt-3 text-sm text-red-700">{saveAuth.error.message}</p>}<button className="command-button mt-4" disabled={saveAuth.isPending || authProviders.length === 0} onClick={() => saveAuth.mutate()}><Save size={16} />Save login methods</button></section>
     <section className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-      {[['Content and media', 'builder'], ['Entries', 'entries'], ['Analytics', 'analytics'], ['Draw', 'draw'], ['Winners', 'winners']].map(([label, route]) => <Link className="panel p-4 font-semibold transition hover:border-brand" href={`/dashboard/competitions/${id}/${route}`} key={route}>{label}</Link>)}
+      {[['Content and media', 'builder'], ['Entry fields', 'fields'], ['Rules', 'rules'], ['Entries', 'entries'], ['Analytics', 'analytics'], ['Draw', 'draw'], ['Winners', 'winners']].map(([label, route]) => <Link className="panel p-4 font-semibold transition hover:border-brand" href={`/dashboard/competitions/${id}/${route}`} key={route}>{label}</Link>)}
     </section>
   </main>;
 }

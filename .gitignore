@@ -15,4 +15,8 @@ TestResults/
 *.db-wal
 *.tsbuildinfo
 .env
+.env.*
 !.env.example
+!.env.*.example
+*.p8
+client_secret*.json
