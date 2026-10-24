@@ -107,6 +107,14 @@ public sealed class EntryService(
         var fields = await DbContext.CompetitionFields.Where(x => x.CompetitionId == competition.Id).ToListAsync(cancellationToken);
         foreach (var required in fields.Where(x => x.IsRequired))
         {
+            if (required.FieldType == CompetitionFieldType.Consent)
+            {
+                var value = request.Answers.FirstOrDefault(x => string.Equals(x.FieldKey, required.FieldKey, StringComparison.OrdinalIgnoreCase))?.Value;
+                if (!bool.TryParse(value, out var accepted) || !accepted)
+                    throw new InvalidOperationException($"Consent '{required.Label}' must be accepted.");
+                continue;
+            }
+
             if (!request.Answers.Any(x => string.Equals(x.FieldKey, required.FieldKey, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(x.Value)))
             {
                 throw new InvalidOperationException($"Field '{required.FieldKey}' is required.");
@@ -215,6 +223,11 @@ public sealed class EntryService(
                 CreatedAt = now
             };
             if (field.IsSensitive) entity.EncryptedValue = protector.Protect(answer.Value ?? string.Empty);
+            else if (field.FieldType == CompetitionFieldType.Consent)
+            {
+                entity.BooleanValue = bool.TryParse(answer.Value, out var accepted) && accepted;
+                entity.StringValue = entity.BooleanValue.Value ? "true" : "false";
+            }
             else entity.StringValue = answer.Value;
             DbContext.EntryAnswers.Add(entity);
         }

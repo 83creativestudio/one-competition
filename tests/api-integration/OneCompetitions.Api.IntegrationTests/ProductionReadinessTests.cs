@@ -69,6 +69,40 @@ public sealed class ProductionReadinessTests : IClassFixture<TestApplicationFact
     }
 
     [Fact]
+    public async Task Required_custom_consent_must_be_explicitly_accepted_and_is_saved_as_boolean()
+    {
+        await _factory.SeedAsync();
+        var owner = await AuthenticatedAsync("owner@one.local");
+        owner.DefaultRequestHeaders.Host = "one-digital.competitions.local";
+        var slug = $"consent-entry-{Guid.NewGuid():N}";
+        var created = await owner.PostAsJsonAsync("/api/competitions", new CreateCompetitionRequest("Consent entry", slug, null,
+            DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddDays(1), null, 2, 1, 0, false));
+        created.EnsureSuccessStatusCode();
+        var competition = (await created.Content.ReadFromJsonAsync<CompetitionResponse>())!;
+        (await owner.PostAsJsonAsync($"/api/competitions/{competition.Id}/fields", new UpsertCompetitionFieldRequest(
+            "consent", "Consent", "Competition terms", null, "Read the rules before accepting.", true, 1, "{}", "{}", false, false, true))).EnsureSuccessStatusCode();
+        (await owner.PostAsync($"/api/competitions/{competition.Id}/publish", null)).EnsureSuccessStatusCode();
+        var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Host = "one-digital.competitions.local";
+        var request = new SubmitEntryRequest($"consent-{Guid.NewGuid():N}@example.com", null, "Test", "Participant", "en", Guid.NewGuid().ToString("N"), null,
+            [], [], "test-pass", "consent-device", DateTimeOffset.UtcNow.AddSeconds(-10));
+        foreach (var value in new[] { "", "false", "yes", "arbitrary-text" })
+        {
+            var rejected = await client.PostAsJsonAsync($"/api/public/competitions/{slug}/entries", request with { Answers = [new EntryAnswerRequest("consent", value)] });
+            Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
+            Assert.Contains("must be accepted", await rejected.Content.ReadAsStringAsync());
+        }
+        var submitted = await client.PostAsJsonAsync($"/api/public/competitions/{slug}/entries", request with { Answers = [new EntryAnswerRequest("consent", "true")] });
+        Assert.True(submitted.IsSuccessStatusCode, await submitted.Content.ReadAsStringAsync());
+        var entry = (await submitted.Content.ReadFromJsonAsync<EntryResponse>())!;
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var answer = await db.EntryAnswers.SingleAsync(x => x.EntryId == entry.Id);
+        Assert.True(answer.BooleanValue);
+        Assert.Equal("true", answer.StringValue);
+    }
+
+    [Fact]
     public async Task Captcha_eligibility_verification_and_sensitive_answer_encryption_work_together()
     {
         await _factory.SeedAsync();

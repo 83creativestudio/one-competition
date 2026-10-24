@@ -14,3 +14,10 @@ is selected automatically or inferred from a telephone number. A required date
 of birth is likewise collected when a minimum age is configured. Existing typed
 Country and DateOfBirth fields are mapped by their configured field keys.
 Server-side eligibility validation remains authoritative.
+
+Custom fields of type `Consent` are rendered as separate, unchecked checkboxes
+and submitted as boolean answers. Required custom consent accepts only `true`,
+not a non-empty string such as `false`. Versioned consent definitions continue
+to be collected separately in `ParticipantConsent`; custom checkboxes do not
+replace the versioned terms/privacy/marketing consent configuration. Campaign
+owners must provide meaningful consent wording before publication.
