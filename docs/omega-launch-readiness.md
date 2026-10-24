@@ -13,6 +13,13 @@ or execute a real prize draw as part of automated rehearsal.
 
 ## 1. Production security - in progress
 
+Release dependency follow-up (2026-10-24): frontend updated to Next.js 16.4.3,
+Zod 4.6.7 and source-map-js 1.2.2 after fresh audit results. Three moderate
+CSS-build-chain findings remain through Tailwind 3/postcss-nested and
+postcss-selector-parser. A Tailwind major migration is deferred, not forced into
+this deployment. Do not accept untrusted CSS as build input. Recheck the audit
+before the broadcast launch; deployment is not production-readiness sign-off.
+
 Local implementation evidence (not yet deployed): MFA re-enrollment protection,
 MFA password-failure lockout, transactional refresh-token rotation, login/logout
 origin checks and authenticated unknown-host rejection are implemented.

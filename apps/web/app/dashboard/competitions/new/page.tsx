@@ -13,9 +13,9 @@ import type { Competition } from "@/lib/contracts";
 
 const schema = z.object({
   name: z.string().min(3), slug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Use lowercase words separated by hyphens."),
-  description: z.string().optional(), startsAt: z.string().min(1), endsAt: z.string().min(1), entryLimit: z.coerce.number().int().positive().optional(),
-  perParticipantEntryLimit: z.coerce.number().int().min(1), numberOfWinners: z.coerce.number().int().min(1), numberOfReserveWinners: z.coerce.number().int().min(0), requiresManualApproval: z.boolean(),
-  minimumAge: z.coerce.number().int().min(0).optional(), allowedCountryCodes: z.string().optional(), requiresEmailVerification: z.boolean(), requiresPhoneVerification: z.boolean(),
+  description: z.string().optional(), startsAt: z.string().min(1), endsAt: z.string().min(1), entryLimit: z.coerce.number<number>().int().positive().optional(),
+  perParticipantEntryLimit: z.coerce.number<number>().int().min(1), numberOfWinners: z.coerce.number<number>().int().min(1), numberOfReserveWinners: z.coerce.number<number>().int().min(0), requiresManualApproval: z.boolean(),
+  minimumAge: z.coerce.number<number>().int().min(0).optional(), allowedCountryCodes: z.string().optional(), requiresEmailVerification: z.boolean(), requiresPhoneVerification: z.boolean(),
   allowedParticipantAuthProviders: z.array(z.enum(["Email", "Google", "Apple", "Facebook", "X", "TikTok"])).min(1, "Select at least one login method.")
 }).refine(data => new Date(data.endsAt) > new Date(data.startsAt), { path: ["endsAt"], message: "Closing time must be after opening time." });
 type FormData = z.infer<typeof schema>;

@@ -11,6 +11,7 @@
     "build": "npm --workspace apps/web run build"
   },
   "overrides": {
+    "source-map-js": "^1.2.2",
     "postcss": "^8.5.19",
     "next": {
       "postcss": "^8.5.19"
