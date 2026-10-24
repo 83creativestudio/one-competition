@@ -17,6 +17,29 @@ public sealed class CompetitionEditingTests : IClassFixture<TestApplicationFacto
     public CompetitionEditingTests(TestApplicationFactory factory) => _factory = factory;
 
     [Fact]
+    public async Task Global_disable_is_tenant_scoped_and_individual_competitions_can_opt_back_in()
+    {
+        await _factory.SeedAsync();
+        var owner = await ClientAsync("owner@one.local", "one-digital");
+        var item = await CreateAsync(owner);
+        Assert.False(item.RequiresEmailVerification);
+        (await owner.PatchAsJsonAsync($"/api/competitions/{item.Id}/email-verification", new UpdateEmailVerificationRequest(true))).EnsureSuccessStatusCode();
+        var admin = await ClientAsync("admin@onecompetitions.local", "omega-tv");
+        var foreignItem = await CreateAsync(admin);
+        (await admin.PatchAsJsonAsync($"/api/competitions/{foreignItem.Id}/email-verification", new UpdateEmailVerificationRequest(true))).EnsureSuccessStatusCode();
+        var response = await owner.PostAsync("/api/competitions/email-verification/disable-all", null);
+        response.EnsureSuccessStatusCode();
+        var result = (await response.Content.ReadFromJsonAsync<EmailVerificationResetResponse>())!;
+        Assert.True(result.UpdatedCompetitions >= 1);
+        Assert.False((await owner.GetFromJsonAsync<CompetitionResponse>($"/api/competitions/{item.Id}"))!.RequiresEmailVerification);
+        Assert.True((await admin.GetFromJsonAsync<CompetitionResponse>($"/api/competitions/{foreignItem.Id}"))!.RequiresEmailVerification);
+        (await owner.PatchAsJsonAsync($"/api/competitions/{item.Id}/email-verification", new UpdateEmailVerificationRequest(true))).EnsureSuccessStatusCode();
+        Assert.True((await owner.GetFromJsonAsync<CompetitionResponse>($"/api/competitions/{item.Id}"))!.RequiresEmailVerification);
+        var viewer = await ClientAsync("owner@omega.local", "omega-tv");
+        Assert.False((await viewer.PostAsync("/api/competitions/email-verification/disable-all", null)).IsSuccessStatusCode);
+    }
+
+    [Fact]
     public async Task Email_verification_can_be_toggled_without_changing_other_settings()
     {
         await _factory.SeedAsync();
@@ -140,6 +163,7 @@ public sealed class CompetitionEditingTests : IClassFixture<TestApplicationFacto
         var fieldResponse = await owner.PostAsJsonAsync($"/api/competitions/{item.Id}/fields", fieldRequest);
         fieldResponse.EnsureSuccessStatusCode();
         var field = (await fieldResponse.Content.ReadFromJsonAsync<CompetitionFieldResponse>())!;
+        (await owner.PatchAsJsonAsync($"/api/competitions/{item.Id}/email-verification", new UpdateEmailVerificationRequest(true))).EnsureSuccessStatusCode();
         (await owner.PostAsJsonAsync($"/api/competitions/{item.Id}/close", "Prepare draw")).EnsureSuccessStatusCode();
         await using (var scope = _factory.Services.CreateAsyncScope())
         {
@@ -153,6 +177,10 @@ public sealed class CompetitionEditingTests : IClassFixture<TestApplicationFacto
         Assert.Contains("locked", await response.Content.ReadAsStringAsync());
         Assert.Equal(HttpStatusCode.BadRequest, (await owner.PatchAsJsonAsync($"/api/competitions/{item.Id}/email-verification", new UpdateEmailVerificationRequest(false))).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, (await owner.PatchAsJsonAsync($"/api/competitions/{item.Id}/fields/{field.Id}", fieldRequest with { Label = "Changed" })).StatusCode);
+        var reset = await owner.PostAsync("/api/competitions/email-verification/disable-all", null);
+        reset.EnsureSuccessStatusCode();
+        Assert.True((await reset.Content.ReadFromJsonAsync<EmailVerificationResetResponse>())!.LockedCompetitions >= 1);
+        Assert.True((await owner.GetFromJsonAsync<CompetitionResponse>($"/api/competitions/{item.Id}"))!.RequiresEmailVerification);
     }
 
     private async Task<HttpClient> ClientAsync(string email, string tenant)

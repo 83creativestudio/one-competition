@@ -26,9 +26,12 @@ function CompetitionEditor({ item }: { item: Competition }) {
   const [confirmed, setConfirmed] = useState(false);
   const form = useForm<CompetitionSettings>({ resolver: zodResolver(competitionSettingsSchema), defaultValues: competitionSettings(item) });
   const save = useMutation({
-    mutationFn: (values: CompetitionSettings) => apiFetch<Competition>(`api/competitions/${item.id}`, {
-      method: "PATCH", body: JSON.stringify(competitionSettingsRequest(values))
-    }),
+    mutationFn: async (values: CompetitionSettings) => {
+      const current = await apiFetch<Competition>(`api/competitions/${item.id}`);
+      return apiFetch<Competition>(`api/competitions/${item.id}`, {
+        method: "PATCH", body: JSON.stringify({ ...competitionSettingsRequest(values), requiresEmailVerification: current.requiresEmailVerification })
+      });
+    },
     onSuccess: value => {
       cache.setQueryData(["competition", item.id], value);
       void cache.invalidateQueries({ queryKey: ["competitions"] });
@@ -55,7 +58,8 @@ function CompetitionEditor({ item }: { item: Competition }) {
         {([ ["startsAt", "Opens"], ["endsAt", "Closes"] ] as const).map(([name, label]) => <label key={name} className="field"><span>{label} ({timezone})</span><input type="datetime-local" step="0.001" {...form.register(name)} aria-invalid={!!form.formState.errors[name]} />{error(name)}</label>)}
         {([ ["entryLimit", "Total entry limit", 1], ["perParticipantEntryLimit", "Entries per participant", 1], ["numberOfWinners", "Winners", 1], ["numberOfReserveWinners", "Reserve winners", 0], ["minimumAge", "Minimum age", 0] ] as const).map(([name, label, minimum]) => <label key={name} className="field"><span>{label}{["entryLimit", "minimumAge"].includes(name) ? " (optional)" : ""}</span><input type="number" min={minimum} step="1" {...form.register(name, { setValueAs: value => value === "" ? undefined : Number(value) })} aria-invalid={!!form.formState.errors[name]} />{error(name)}</label>)}
         <label className="field md:col-span-2"><span>Allowed countries</span><input placeholder="CY, GR" {...form.register("allowedCountryCodes")} aria-invalid={!!form.formState.errors.allowedCountryCodes} />{error("allowedCountryCodes")}</label>
-        {([ ["requiresManualApproval", "Require manual entry approval"], ["requiresEmailVerification", "Require email verification"], ["requiresPhoneVerification", "Require phone verification"] ] as const).map(([name, label]) => <label key={name} className="flex items-center gap-3 text-sm"><input type="checkbox" {...form.register(name)} />{label}</label>)}
+        {([ ["requiresManualApproval", "Require manual entry approval"], ["requiresPhoneVerification", "Require phone verification"] ] as const).map(([name, label]) => <label key={name} className="flex items-center gap-3 text-sm"><input type="checkbox" {...form.register(name)} />{label}</label>)}
+        <div className="text-sm md:col-span-2">Email verification: {item.requiresEmailVerification ? "Enabled" : "Off"}<Link className="ml-3 font-semibold text-brand" href="/dashboard/settings">Manage in Settings</Link></div>
         <fieldset className="min-w-0 md:col-span-2"><legend className="text-sm font-semibold">Participant login methods</legend><div className="mt-3 grid gap-3 sm:grid-cols-3">{participantProviders.map(provider => <label key={provider} className="flex items-center gap-2 text-sm"><input type="checkbox" value={provider} {...form.register("allowedParticipantAuthProviders")} />{provider}</label>)}</div>{error("allowedParticipantAuthProviders")}</fieldset>
         {item.publishedAt && <label className="flex items-start gap-3 border-t border-line pt-4 text-sm md:col-span-2"><input type="checkbox" className="mt-1" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} />Apply these settings to the published competition.</label>}
         {save.error && <div className="md:col-span-2"><ErrorState error={save.error} /></div>}

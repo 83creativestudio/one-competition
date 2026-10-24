@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Save } from "lucide-react";
+import { MailX, Save } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { ErrorState, LoadingState } from "@/components/operations-ui";
@@ -9,13 +9,28 @@ import { apiFetch } from "@/lib/api";
 import type { Competition } from "@/lib/contracts";
 
 export function CompetitionVerificationSettings() {
+  const cache = useQueryClient();
   const [selected, setSelected] = useState("");
+  const [resetConfirmed, setResetConfirmed] = useState(false);
   const query = useQuery({ queryKey: ["competitions"], queryFn: () => apiFetch<Competition[]>("api/competitions") });
+  const reset = useMutation({ mutationFn: () => apiFetch<{ updatedCompetitions: number; lockedCompetitions: number }>("api/competitions/email-verification/disable-all", { method: "POST" }), onSuccess: () => {
+    setSelected(""); setResetConfirmed(false);
+    void cache.invalidateQueries({ queryKey: ["competitions"] });
+    void cache.invalidateQueries({ queryKey: ["competition"] });
+    void cache.invalidateQueries({ queryKey: ["versions"] });
+  } });
   const item = query.data?.find(value => value.id === selected);
   return <section className="mt-8 max-w-3xl border-t border-line pt-6">
     <h2 className="text-lg font-semibold">Participant email verification</h2>
+    <div className="mt-3 flex flex-wrap items-center gap-3 text-sm"><span>Default for all new competitions</span><span className="status">Off</span></div>
     {query.isLoading ? <LoadingState /> : query.error ? <ErrorState error={query.error} /> : <>
-      <label className="field mt-4"><span>Competition</span><select value={selected} onChange={event => setSelected(event.target.value)}><option value="">Select a competition</option>{query.data?.map(value => <option key={value.id} value={value.id}>{value.name}</option>)}</select></label>
+      <form className="mt-4 grid gap-3 border-b border-line pb-5" onSubmit={event => { event.preventDefault(); reset.mutate(); }}>
+        <label className="flex items-start gap-3 text-sm"><input required type="checkbox" className="mt-1" checked={resetConfirmed} disabled={reset.isPending} onChange={event => setResetConfirmed(event.target.checked)} />Disable email verification for new entries in all editable competitions in this workspace.</label>
+        <button className="secondary-button w-fit" disabled={!resetConfirmed || reset.isPending}><MailX size={16} />Disable for all competitions</button>
+        {reset.error && <ErrorState error={reset.error} />}
+        {reset.data && <p className="text-sm text-emerald-800" role="status">Verification disabled for {reset.data.updatedCompetitions} competitions.{reset.data.lockedCompetitions > 0 ? ` ${reset.data.lockedCompetitions} locked competitions were unchanged.` : ""}</p>}
+      </form>
+      <label className="field mt-5"><span>Individual competition exception</span><select value={selected} onChange={event => setSelected(event.target.value)}><option value="">Select a competition</option>{query.data?.map(value => <option key={value.id} value={value.id}>{value.name} - {value.requiresEmailVerification ? "Verification enabled" : "Off"}</option>)}</select></label>
       {query.data?.length === 0 && <p className="mt-3 text-sm text-muted">No competitions yet.</p>}
       {item && <VerificationEditor key={item.id} item={item} />}
     </>}

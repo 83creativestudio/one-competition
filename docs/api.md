@@ -183,3 +183,10 @@ screen supports updating each field through the existing PATCH field endpoint,
 including consent wording, placeholders, help text, required and data-handling
 flags, order, validation and options JSON. Existing answer field keys/types and
 frozen draw configurations are protected from incompatible edits.
+
+New competitions default to email verification off. Enable exceptions centrally
+in Organisation settings. `POST /api/competitions/email-verification/disable-all`
+disables verification for all editable competitions in the current authorized
+workspace, returning `updatedCompetitions` and `lockedCompetitions`. Finalised or
+frozen competitions are skipped. The operation is transactional, versioned and
+audited, and never approves existing pending entries or changes another tenant.

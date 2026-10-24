@@ -133,6 +133,31 @@ public sealed class CompetitionService(
             ParseAuthProviders(item.AllowedParticipantAuthProvidersJson)), cancellationToken);
     }
 
+    public async Task<EmailVerificationResetResponse> DisableEmailVerificationAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        await EnsureTenantManagerAsync(userId, cancellationToken);
+        var items = await DbContext.Competitions.Where(x => x.TenantId == TenantContext.TenantId && x.RequiresEmailVerification).ToListAsync(cancellationToken);
+        var frozenIds = await DbContext.Draws.Where(x => x.TenantId == TenantContext.TenantId
+            && x.Status != DrawStatus.Cancelled && x.Status != DrawStatus.Invalidated).Select(x => x.CompetitionId).ToListAsync(cancellationToken);
+        var updated = 0;
+        var locked = 0;
+        await using var transaction = await DbContext.Database.BeginTransactionAsync(cancellationToken);
+        foreach (var item in items)
+        {
+            if (item.Status is CompetitionStatus.DrawPreparation or CompetitionStatus.DrawApproved or CompetitionStatus.WinnerVerification
+                or CompetitionStatus.Completed or CompetitionStatus.Archived or CompetitionStatus.Cancelled || frozenIds.Contains(item.Id))
+            {
+                locked++;
+                continue;
+            }
+            await SetEmailVerificationAsync(userId, item.Id, false, cancellationToken);
+            updated++;
+        }
+        await AuditAsync(userId, "competition.email_verification_disabled_globally", "Tenant", TenantContext.TenantId, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return new(updated, locked);
+    }
+
     public async Task<CompetitionResponse> PublishAsync(Guid userId, Guid competitionId, CancellationToken cancellationToken)
     {
         await EnsureTenantManagerAsync(userId, cancellationToken);
