@@ -5,13 +5,14 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, ArrowRight, CalendarDays, Gift, ShieldCheck } from "lucide-react";
 import { cache, type CSSProperties } from "react";
 import type { PublicBrand } from "@/lib/contracts";
+import { publicRequestHeaders } from "@/lib/public-request-headers";
 
 export const loadPublicBrand = cache(async (brandId: string, tenantSlug?: string, page = 1) => {
   if (!/^[a-f0-9-]{36}$/i.test(brandId)) notFound();
   const requestHeaders = await headers();
   const prefix = tenantSlug ? `c/${encodeURIComponent(tenantSlug)}/api/public` : "api/public";
   const response = await fetch(`${process.env.API_BASE_URL ?? "http://127.0.0.1:5050"}/${prefix}/brands/${brandId}?page=${Math.max(1, page)}`, {
-    cache: "no-store", headers: { Host: requestHeaders.get("host") ?? "localhost" }
+    cache: "no-store", headers: publicRequestHeaders(requestHeaders)
   });
   if (!response.ok) notFound();
   return await response.json() as PublicBrand;

@@ -3,14 +3,14 @@ import Link from "next/link";
 import Image from "next/image";
 import { CampaignBlocks } from "@/components/campaign-blocks";
 import type { PublicCompetition } from "@/lib/contracts";
+import { publicRequestHeaders } from "@/lib/public-request-headers";
 
 export async function PublicCampaign({ competitionSlug, tenantSlug }: { competitionSlug: string; tenantSlug?: string }) {
   const prefix = tenantSlug ? `c/${encodeURIComponent(tenantSlug)}/api/public` : "api/public";
   const requestHeaders = await headers();
-  const host = requestHeaders.get("host");
   const response = await fetch(`${process.env.API_BASE_URL ?? "http://127.0.0.1:5050"}/${prefix}/competitions/${encodeURIComponent(competitionSlug)}`, {
     cache: "no-store",
-    headers: host ? { Host: host, "X-Forwarded-Proto": requestHeaders.get("x-forwarded-proto") ?? "http" } : undefined
+    headers: publicRequestHeaders(requestHeaders)
   });
   if (!response.ok) return <main className="mx-auto max-w-3xl px-6 py-12"><h1 className="text-3xl font-semibold">Competition unavailable</h1></main>;
   const data = await response.json() as PublicCompetition;
