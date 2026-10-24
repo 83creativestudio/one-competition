@@ -38,6 +38,10 @@ public sealed class CompetitionsController(ICompetitionService competitions) : C
     public async Task<ActionResult<CompetitionResponse>> Publish(Guid id, CancellationToken cancellationToken)
         => Ok(await competitions.PublishAsync(User.GetUserId(), id, cancellationToken));
 
+    [HttpPatch("{id:guid}/email-verification")]
+    public async Task<ActionResult<CompetitionResponse>> EmailVerification(Guid id, UpdateEmailVerificationRequest request, CancellationToken cancellationToken)
+        => Ok(await competitions.SetEmailVerificationAsync(User.GetUserId(), id, request.RequiresEmailVerification, cancellationToken));
+
     [HttpPost("{id:guid}/close")]
     public async Task<ActionResult<CompetitionResponse>> Close(Guid id, [FromBody] string? reason, CancellationToken cancellationToken)
         => Ok(await competitions.CloseAsync(User.GetUserId(), id, reason, cancellationToken));

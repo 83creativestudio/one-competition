@@ -169,3 +169,17 @@ Health:
 
 Swagger is enabled only in development.
 Administrator account updates accept an optional `newPassword` (12-128 characters, validated by Identity) and `unlockLogin` boolean. Both operations require platform administrator permission, revoke existing sessions, and create audit events.
+
+## Participant Verification Settings
+
+`PATCH /api/competitions/{id}/email-verification` accepts
+`{ "requiresEmailVerification": true }` (or `false`). Tenant-manager authorization,
+tenant scoping, published configuration versioning, auditing and draw locks apply.
+This changes new entry submissions only; pending entries are not automatically
+verified or approved. Administrator account verification is unaffected.
+
+Organisation settings exposes this per-competition control. The Entry fields
+screen supports updating each field through the existing PATCH field endpoint,
+including consent wording, placeholders, help text, required and data-handling
+flags, order, validation and options JSON. Existing answer field keys/types and
+frozen draw configurations are protected from incompatible edits.

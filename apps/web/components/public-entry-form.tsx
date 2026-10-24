@@ -117,8 +117,8 @@ export function PublicEntryForm({ competitionSlug, tenantSlug }: { competitionSl
         const inputType = field.fieldType === "Email" ? "email" : field.fieldType === "Phone" ? "tel" : field.fieldType === "Date" || field.fieldType === "DateOfBirth" || birthDateRequired ? "date" : "text";
         return <label className="field" key={field.id}><span>{field.label}{required ? " *" : ""}</span>
           {countryRequired ? <select required value={values[field.fieldKey] ?? ""} onChange={event => setValues({ ...values, [field.fieldKey]: event.target.value })}><option value="">Select your country</option>{data.allowedCountryCodes.map(country => <option key={country} value={country}>{countryName(country)}</option>)}</select>
-            : field.fieldType === "Textarea" ? <textarea required={required} value={values[field.fieldKey] ?? ""} onChange={event => setValues({ ...values, [field.fieldKey]: event.target.value })} />
-              : <input required={required} type={inputType} value={values[field.fieldKey] ?? ""} onChange={event => setValues({ ...values, [field.fieldKey]: event.target.value })} />}
+            : field.fieldType === "Textarea" ? <textarea required={required} placeholder={field.placeholder} value={values[field.fieldKey] ?? ""} onChange={event => setValues({ ...values, [field.fieldKey]: event.target.value })} />
+              : <input required={required} placeholder={field.placeholder} type={inputType} value={values[field.fieldKey] ?? ""} onChange={event => setValues({ ...values, [field.fieldKey]: event.target.value })} />}
           {field.helpText && <small className="mt-1 block font-normal text-neutral-600">{field.helpText}</small>}</label>;
       })}
       {eligibility.addCountry && <label className="field"><span>Country of residence *</span><select required value={values[eligibility.countryKey] ?? ""} onChange={event => setValues({ ...values, [eligibility.countryKey]: event.target.value })}><option value="">Select your country</option>{data.allowedCountryCodes.map(country => <option key={country} value={country}>{countryName(country)}</option>)}</select></label>}

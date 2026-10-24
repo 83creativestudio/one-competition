@@ -17,6 +17,53 @@ public sealed class CompetitionEditingTests : IClassFixture<TestApplicationFacto
     public CompetitionEditingTests(TestApplicationFactory factory) => _factory = factory;
 
     [Fact]
+    public async Task Email_verification_can_be_toggled_without_changing_other_settings()
+    {
+        await _factory.SeedAsync();
+        var owner = await ClientAsync("owner@one.local", "one-digital");
+        var item = await CreateAsync(owner);
+        (await owner.PostAsync($"/api/competitions/{item.Id}/publish", null)).EnsureSuccessStatusCode();
+        foreach (var enabled in new[] { true, false })
+        {
+            var response = await owner.PatchAsJsonAsync($"/api/competitions/{item.Id}/email-verification", new UpdateEmailVerificationRequest(enabled));
+            response.EnsureSuccessStatusCode();
+            var updated = (await response.Content.ReadFromJsonAsync<CompetitionResponse>())!;
+            Assert.Equal(enabled, updated.RequiresEmailVerification);
+            Assert.Equal(item.Name, updated.Name);
+            Assert.Equal(item.EndsAt, updated.EndsAt);
+            Assert.Equal(item.NumberOfWinners, updated.NumberOfWinners);
+        }
+        var foreign = await ClientAsync("owner@omega.local", "omega-tv");
+        Assert.False((await foreign.PatchAsJsonAsync($"/api/competitions/{item.Id}/email-verification", new UpdateEmailVerificationRequest(false))).IsSuccessStatusCode);
+    }
+
+    [Fact]
+    public async Task Published_field_settings_are_editable_and_previous_wording_is_versioned()
+    {
+        await _factory.SeedAsync();
+        var owner = await ClientAsync("owner@one.local", "one-digital");
+        var item = await CreateAsync(owner);
+        var original = new UpsertCompetitionFieldRequest("consent", "Consent", "Original terms", null, "Original help", true, 1, "{}", "[]", false, false, true);
+        var created = await owner.PostAsJsonAsync($"/api/competitions/{item.Id}/fields", original);
+        created.EnsureSuccessStatusCode();
+        var field = (await created.Content.ReadFromJsonAsync<CompetitionFieldResponse>())!;
+        (await owner.PostAsync($"/api/competitions/{item.Id}/publish", null)).EnsureSuccessStatusCode();
+        var response = await owner.PatchAsJsonAsync($"/api/competitions/{item.Id}/fields/{field.Id}", original with { Label = "Updated terms", HelpText = "Updated help", IsRequired = false, Placeholder = "Updated placeholder" });
+        response.EnsureSuccessStatusCode();
+        var updated = (await response.Content.ReadFromJsonAsync<CompetitionFieldResponse>())!;
+        Assert.Equal("Updated terms", updated.Label);
+        Assert.Equal("Updated help", updated.HelpText);
+        Assert.False(updated.IsRequired);
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var version = await db.CompetitionVersions.OrderByDescending(x => x.VersionNumber).FirstAsync(x => x.CompetitionId == item.Id);
+        using var snapshot = JsonDocument.Parse(version.ConfigurationJson);
+        Assert.Equal("Original terms", snapshot.RootElement.GetProperty("Fields")[0].GetProperty("Label").GetString());
+        var foreign = await ClientAsync("owner@omega.local", "omega-tv");
+        Assert.False((await foreign.PatchAsJsonAsync($"/api/competitions/{item.Id}/fields/{field.Id}", original)).IsSuccessStatusCode);
+    }
+
+    [Fact]
     public async Task Owner_can_edit_a_draft_and_preserve_its_public_slug()
     {
         await _factory.SeedAsync();
@@ -89,6 +136,10 @@ public sealed class CompetitionEditingTests : IClassFixture<TestApplicationFacto
         await _factory.SeedAsync();
         var owner = await ClientAsync("owner@one.local", "one-digital");
         var item = await CreateAsync(owner);
+        var fieldRequest = new UpsertCompetitionFieldRequest("email", "Email", "Email", null, null, true, 1, "{}", "[]", false, true, true);
+        var fieldResponse = await owner.PostAsJsonAsync($"/api/competitions/{item.Id}/fields", fieldRequest);
+        fieldResponse.EnsureSuccessStatusCode();
+        var field = (await fieldResponse.Content.ReadFromJsonAsync<CompetitionFieldResponse>())!;
         (await owner.PostAsJsonAsync($"/api/competitions/{item.Id}/close", "Prepare draw")).EnsureSuccessStatusCode();
         await using (var scope = _factory.Services.CreateAsyncScope())
         {
@@ -100,6 +151,8 @@ public sealed class CompetitionEditingTests : IClassFixture<TestApplicationFacto
         var response = await owner.PatchAsJsonAsync($"/api/competitions/{item.Id}", Update(item));
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Contains("locked", await response.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.BadRequest, (await owner.PatchAsJsonAsync($"/api/competitions/{item.Id}/email-verification", new UpdateEmailVerificationRequest(false))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await owner.PatchAsJsonAsync($"/api/competitions/{item.Id}/fields/{field.Id}", fieldRequest with { Label = "Changed" })).StatusCode);
     }
 
     private async Task<HttpClient> ClientAsync(string email, string tenant)

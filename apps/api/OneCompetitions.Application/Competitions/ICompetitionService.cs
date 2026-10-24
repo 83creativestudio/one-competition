@@ -9,6 +9,7 @@ public interface ICompetitionService
     Task<CompetitionResponse> CreateAsync(Guid userId, CreateCompetitionRequest request, CancellationToken cancellationToken);
     Task<CompetitionResponse?> GetAsync(Guid userId, Guid competitionId, CancellationToken cancellationToken);
     Task<CompetitionResponse> UpdateAsync(Guid userId, Guid competitionId, UpdateCompetitionRequest request, CancellationToken cancellationToken);
+    Task<CompetitionResponse> SetEmailVerificationAsync(Guid userId, Guid competitionId, bool required, CancellationToken cancellationToken);
     Task<CompetitionResponse> PublishAsync(Guid userId, Guid competitionId, CancellationToken cancellationToken);
     Task<CompetitionResponse> CloseAsync(Guid userId, Guid competitionId, string? reason, CancellationToken cancellationToken);
     Task<IReadOnlyList<CompetitionVersionResponse>> VersionsAsync(Guid userId, Guid competitionId, CancellationToken cancellationToken);

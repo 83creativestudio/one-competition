@@ -122,6 +122,17 @@ public sealed class CompetitionService(
         return ToResponse(competition);
     }
 
+    public async Task<CompetitionResponse> SetEmailVerificationAsync(Guid userId, Guid competitionId, bool required, CancellationToken cancellationToken)
+    {
+        await EnsureTenantManagerAsync(userId, cancellationToken);
+        var item = await EnsureCompetitionAsync(competitionId, cancellationToken);
+        return await UpdateAsync(userId, competitionId, new UpdateCompetitionRequest(item.Name, item.Description,
+            item.StartsAt, item.EndsAt, item.EntryLimit, item.PerParticipantEntryLimit, item.NumberOfWinners,
+            item.NumberOfReserveWinners, item.RequiresManualApproval, item.MinimumAge,
+            ParseCountries(item.AllowedCountryCodesJson), required, item.RequiresPhoneVerification,
+            ParseAuthProviders(item.AllowedParticipantAuthProvidersJson)), cancellationToken);
+    }
+
     public async Task<CompetitionResponse> PublishAsync(Guid userId, Guid competitionId, CancellationToken cancellationToken)
     {
         await EnsureTenantManagerAsync(userId, cancellationToken);
@@ -222,8 +233,20 @@ public sealed class CompetitionService(
     public async Task<CompetitionFieldResponse> UpdateFieldAsync(Guid userId, Guid competitionId, Guid fieldId, UpsertCompetitionFieldRequest request, CancellationToken cancellationToken)
     {
         await EnsureTenantManagerAsync(userId, cancellationToken);
+        var competition = await EnsureCompetitionAsync(competitionId, cancellationToken);
+        if (competition.Status is CompetitionStatus.DrawPreparation or CompetitionStatus.DrawApproved or CompetitionStatus.WinnerVerification
+            or CompetitionStatus.Completed or CompetitionStatus.Archived or CompetitionStatus.Cancelled
+            || await DbContext.Draws.AnyAsync(x => x.CompetitionId == competitionId && x.Status != DrawStatus.Cancelled && x.Status != DrawStatus.Invalidated, cancellationToken))
+            throw new InvalidOperationException("Form fields are locked because the competition is finalised or a draw pool has been prepared.");
         var field = await DbContext.CompetitionFields.SingleOrDefaultAsync(x => x.Id == fieldId && x.CompetitionId == competitionId, cancellationToken)
             ?? throw new InvalidOperationException("Competition field was not found.");
+        if ((NormalizeKey(request.FieldKey) != field.FieldKey || !string.Equals(request.FieldType, field.FieldType.ToString(), StringComparison.OrdinalIgnoreCase))
+            && await DbContext.EntryAnswers.AnyAsync(x => x.CompetitionFieldId == fieldId, cancellationToken))
+            throw new InvalidOperationException("Field key and type cannot change after answers have been collected. Labels and other field settings remain editable.");
+        if (await DbContext.CompetitionFields.AnyAsync(x => x.CompetitionId == competitionId && x.Id != fieldId && x.FieldKey == NormalizeKey(request.FieldKey), cancellationToken))
+            throw new InvalidOperationException("Field key is already used by another field.");
+        if (competition.PublishedAt is not null)
+            await CreateVersionAsync(competition, userId, "Entry form field changed after publication.", cancellationToken);
         ApplyField(field, request);
         await DbContext.SaveChangesAsync(cancellationToken);
         await AuditAsync(userId, "competition_field.updated", "CompetitionField", field.Id, cancellationToken);
@@ -406,7 +429,7 @@ public sealed class CompetitionService(
             Id = Guid.NewGuid(),
             CompetitionId = competition.Id,
             VersionNumber = nextVersion + 1,
-            ConfigurationJson = JsonSerializer.Serialize(new { competition.Name, competition.Description, competition.Slug, competition.BrandProfileId, competition.StartsAt, competition.EndsAt, competition.EntryLimit, competition.PerParticipantEntryLimit, competition.RequiresManualApproval, competition.NumberOfWinners, competition.NumberOfReserveWinners, competition.MinimumAge, competition.AllowedCountryCodesJson, competition.RequiresEmailVerification, competition.RequiresPhoneVerification, competition.AllowedParticipantAuthProvidersJson, Pages = pages.Select(x => new { x.LanguageCode, x.Title, x.SeoTitle, x.SeoDescription, x.LayoutJson }), Fields = fields.Select(x => new { x.FieldKey, x.FieldType, x.IsRequired }), SocialActions = socialActions.Select(x => new { x.Provider, x.ActionType, x.TargetReference, x.Description, x.IsRequired }), RulesHash = rules?.ContentHash }),
+            ConfigurationJson = JsonSerializer.Serialize(new { competition.Name, competition.Description, competition.Slug, competition.BrandProfileId, competition.StartsAt, competition.EndsAt, competition.EntryLimit, competition.PerParticipantEntryLimit, competition.RequiresManualApproval, competition.NumberOfWinners, competition.NumberOfReserveWinners, competition.MinimumAge, competition.AllowedCountryCodesJson, competition.RequiresEmailVerification, competition.RequiresPhoneVerification, competition.AllowedParticipantAuthProvidersJson, Pages = pages.Select(x => new { x.LanguageCode, x.Title, x.SeoTitle, x.SeoDescription, x.LayoutJson }), Fields = fields.Select(x => new { x.FieldKey, x.FieldType, x.Label, x.Placeholder, x.HelpText, x.IsRequired, x.DisplayOrder, x.ValidationJson, x.OptionsJson, x.IsSensitive, x.IsSearchable, x.IsExportable }), SocialActions = socialActions.Select(x => new { x.Provider, x.ActionType, x.TargetReference, x.Description, x.IsRequired }), RulesHash = rules?.ContentHash }),
             RulesVersionId = rules?.Id,
             CreatedByUserId = userId,
             ChangeSummary = summary,
@@ -454,7 +477,11 @@ public sealed class CompetitionService(
 
     private static void ApplyField(CompetitionField field, UpsertCompetitionFieldRequest request)
     {
-        if (!Enum.TryParse<CompetitionFieldType>(request.FieldType, true, out var fieldType))
+        if (string.IsNullOrWhiteSpace(request.Label) || string.IsNullOrWhiteSpace(request.FieldKey))
+            throw new InvalidOperationException("Field label and key are required.");
+        if (request.Label.Trim().Length > 220 || request.FieldKey.Length > 120 || request.DisplayOrder < 0)
+            throw new InvalidOperationException("Field label must be at most 220 characters, field key at most 120 characters, and display order cannot be negative.");
+        if (!Enum.TryParse<CompetitionFieldType>(request.FieldType, true, out var fieldType) || !Enum.IsDefined(fieldType))
         {
             throw new InvalidOperationException("Field type is not valid.");
         }
@@ -472,8 +499,15 @@ public sealed class CompetitionService(
         field.IsSearchable = request.IsSearchable;
         field.IsExportable = request.IsExportable;
         field.UpdatedAt = DateTimeOffset.UtcNow;
-        _ = JsonDocument.Parse(field.ValidationJson);
-        _ = JsonDocument.Parse(field.OptionsJson);
+        try
+        {
+            using var validation = JsonDocument.Parse(field.ValidationJson);
+            using var options = JsonDocument.Parse(field.OptionsJson);
+        }
+        catch (JsonException)
+        {
+            throw new InvalidOperationException("Field validation and options must contain valid JSON.");
+        }
     }
 
     private static void ValidateCompetition(string name, string slug, DateTimeOffset startsAt, DateTimeOffset endsAt, int perParticipantLimit, int winners)

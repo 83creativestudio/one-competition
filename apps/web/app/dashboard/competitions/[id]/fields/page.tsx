@@ -1,6 +1,6 @@
 "use client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Pencil, Plus, Trash2 } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 import {
@@ -10,13 +10,16 @@ import {
   humanize,
 } from "@/components/operations-ui";
 import { apiFetch } from "@/lib/api";
-import type { CompetitionField } from "@/lib/contracts";
+import type { Competition, CompetitionField } from "@/lib/contracts";
+import { CompetitionFieldEditor } from "@/components/competition-field-editor";
 
 export default function FieldsPage() {
   const id = useParams<{ id: string }>().id;
   const cache = useQueryClient();
   const [label, setLabel] = useState("");
   const [type, setType] = useState("Text");
+  const [editing, setEditing] = useState<CompetitionField>();
+  const competition = useQuery({ queryKey: ["competition", id], queryFn: () => apiFetch<Competition>(`api/competitions/${id}`) });
   const query = useQuery({
     queryKey: ["fields", id],
     queryFn: () =>
@@ -96,10 +99,15 @@ export default function FieldsPage() {
           <select value={type} onChange={(e) => setType(e.target.value)}>
             {[
               "Text",
+              "Textarea",
               "Email",
               "Phone",
               "Number",
               "Date",
+              "DateOfBirth",
+              "Country",
+              "City",
+              "Postcode",
               "Checkbox",
               "Dropdown",
               "Consent",
@@ -113,6 +121,10 @@ export default function FieldsPage() {
           Add field
         </button>
       </form>
+      {create.error && <ErrorState error={create.error} />}
+      {remove.error && <ErrorState error={remove.error} />}
+      {reorder.error && <ErrorState error={reorder.error} />}
+      {editing && <CompetitionFieldEditor key={editing.id} competitionId={id} field={editing} published={!!competition.data?.publishedAt} onCancel={() => setEditing(undefined)} onSaved={() => { setEditing(undefined); void refresh(); void cache.invalidateQueries({ queryKey: ["versions", id] }); }} />}
       {query.isLoading ? (
         <LoadingState />
       ) : query.error ? (
@@ -143,6 +155,7 @@ export default function FieldsPage() {
                   <td>{field.isRequired ? "Yes" : "No"}</td>
                   <td>
                     <div className="flex gap-1">
+                      <button className="icon-button" title={`Edit ${field.label}`} onClick={() => setEditing(field)}><Pencil size={15} /></button>
                       <button
                         className="icon-button"
                         title="Move up"
