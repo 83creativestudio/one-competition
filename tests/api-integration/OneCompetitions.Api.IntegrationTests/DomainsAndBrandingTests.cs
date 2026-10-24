@@ -22,6 +22,57 @@ public sealed class DomainsAndBrandingTests : IClassFixture<TestApplicationFacto
     }
 
     [Fact]
+    public async Task Platform_address_is_computed_for_the_authorized_workspace_without_creating_a_domain()
+    {
+        await _factory.SeedAsync();
+        var client = await CreateTenantOwnerClientAsync();
+        client.DefaultRequestHeaders.Host = "one-digital.competitions.local";
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var before = await db.TenantDomains.IgnoreQueryFilters().CountAsync();
+
+        var address = await client.GetFromJsonAsync<PlatformAddressResponse>("/api/domains/platform-address");
+
+        Assert.NotNull(address);
+        Assert.Equal("competitions.local", address.Hostname);
+        Assert.Equal("https://competitions.local/", address.PlatformUrl);
+        Assert.Equal("https://competitions.local/c/one-digital", address.WorkspaceUrl);
+        Assert.Equal(before, await db.TenantDomains.IgnoreQueryFilters().CountAsync());
+    }
+
+    [Fact]
+    public async Task Platform_address_requires_authentication()
+    {
+        var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Host = "competitions.local";
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/domains/platform-address")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Platform_address_cannot_be_read_for_another_tenant()
+    {
+        await _factory.SeedAsync();
+        var client = await CreateTenantOwnerClientAsync();
+        client.DefaultRequestHeaders.Host = "omega-tv.competitions.local";
+        var response = await client.GetAsync("/api/domains/platform-address");
+        Assert.False(response.IsSuccessStatusCode);
+        Assert.DoesNotContain("workspaceUrl", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Platform_domain_cannot_be_manually_verified()
+    {
+        await _factory.SeedAsync();
+        var client = await CreateTenantOwnerClientAsync();
+        client.DefaultRequestHeaders.Host = "one-digital.competitions.local";
+        var domains = await client.GetFromJsonAsync<TenantDomainResponse[]>("/api/domains");
+        var platformDomain = Assert.Single(domains!, x => x.DomainType == "PlatformSubdomain");
+        var response = await client.PostAsync($"/api/domains/{platformDomain.Id}/verify", null);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("system-managed", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
     public async Task Tenant_owner_can_create_and_verify_development_custom_domain()
     {
         await _factory.SeedAsync();

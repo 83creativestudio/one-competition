@@ -21,3 +21,11 @@ Real customer custom domains still require Active status; unknown, unverified an
 suspended customer hosts are rejected even when a request carries valid credentials.
 Legacy conflicting rows should be disconnected with an audit event and retained
 for history, not marked verified merely to bypass the error.
+
+## Platform Address In The Dashboard
+
+`GET /api/domains/platform-address` returns the configured shared platform hostname,
+its HTTPS URL and the authorized workspace's `/c/{slug}` URL. The Domains screen
+displays this as a read-only, platform-managed address. It is computed from trusted
+configuration and tenant context, not inserted into `TenantDomain` or assigned to
+one customer. Platform-managed domains cannot be manually DNS-verified or deleted.

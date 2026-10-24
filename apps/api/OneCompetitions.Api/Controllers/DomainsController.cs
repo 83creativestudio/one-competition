@@ -12,6 +12,12 @@ namespace OneCompetitions.Api.Controllers;
 [Authorize(Policy = AppPolicies.TenantMember)]
 public sealed class DomainsController(ITenantDomainService domains) : ControllerBase
 {
+    [HttpGet("platform-address")]
+    public async Task<ActionResult<PlatformAddressResponse>> PlatformAddress(CancellationToken cancellationToken)
+    {
+        return Ok(await domains.GetPlatformAddressAsync(User.GetUserId(), cancellationToken));
+    }
+
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<TenantDomainResponse>>> Index(CancellationToken cancellationToken)
     {

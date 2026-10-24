@@ -30,6 +30,17 @@ public sealed class TenantDomainService(
         @"^(?=.{1,253}$)(?!-)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
+    public async Task<PlatformAddressResponse> GetPlatformAddressAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        await EnsureTenantManagerAsync(userId, cancellationToken);
+        var tenant = await dbContext.Tenants.SingleAsync(x => x.Id == tenantContext.TenantId, cancellationToken);
+        var configuredHost = configuration["PLATFORM_BASE_DOMAIN"] ?? "competitions.local";
+        var hostname = Uri.TryCreate(configuredHost, UriKind.Absolute, out var uri)
+            ? uri.IdnHost : configuredHost.Trim().TrimEnd('.', '/').ToLowerInvariant();
+        var platformUrl = $"https://{hostname}/";
+        return new PlatformAddressResponse(hostname, platformUrl, $"{platformUrl}c/{Uri.EscapeDataString(tenant.Slug)}");
+    }
+
     public async Task<IReadOnlyList<TenantDomainResponse>> ListAsync(Guid userId, CancellationToken cancellationToken)
     {
         await EnsureTenantManagerAsync(userId, cancellationToken);
@@ -101,6 +112,10 @@ public sealed class TenantDomainService(
 
         var domain = await dbContext.TenantDomains.SingleOrDefaultAsync(x => x.Id == domainId, cancellationToken)
             ?? throw new InvalidOperationException("Domain was not found.");
+
+        if (domain.DomainType is TenantDomainType.PlatformPath or TenantDomainType.PlatformSubdomain
+            || PlatformHostnames.IsReserved(domain.Hostname, configuration))
+            throw new InvalidOperationException("Platform domains are system-managed and do not require tenant DNS verification.");
 
         if (string.IsNullOrWhiteSpace(domain.VerificationToken))
         {
