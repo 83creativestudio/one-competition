@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
+import { entryEligibilityFields, entryEligibilityValues } from "@/lib/entry-eligibility";
 import type { Entry, ParticipantSocialSession, PublicCompetition, SocialActionRequirement } from "@/lib/contracts";
 
 declare global {
@@ -67,7 +68,7 @@ export function PublicEntryForm({ competitionSlug, tenantSlug }: { competitionSl
     mutationFn: () => apiFetch<Entry>(`${prefix}/competitions/${competitionSlug}/entries`, { method: "POST", body: JSON.stringify({
       email: values.email, phone: values.phone, firstName: values.first_name, lastName: values.last_name, preferredLanguage: "en",
       idempotencyKey: crypto.randomUUID(), deviceFingerprint: `${navigator.language}:${screen.width}x${screen.height}:${navigator.platform}`,
-      formStartedAt: startedAt.current, captchaToken, dateOfBirth: values.date_of_birth || undefined, countryCode: values.country || undefined,
+      formStartedAt: startedAt.current, captchaToken, ...entryEligibilityValues(competition.data?.fields ?? [], values),
       answers: competition.data?.fields.map(field => ({ fieldKey: field.fieldKey, value: values[field.fieldKey] ?? "" })) ?? [],
       consents: competition.data?.consents.map(consent => ({ consentDefinitionId: consent.id, accepted: !!consents[consent.id] })) ?? []
     }) }), onSuccess: setEntry
@@ -82,6 +83,7 @@ export function PublicEntryForm({ competitionSlug, tenantSlug }: { competitionSl
   if (competition.isLoading) return <main className="grid min-h-[60vh] place-items-center"><LoaderCircle className="animate-spin" /></main>;
   if (competition.error || !competition.data) return <main className="mx-auto max-w-2xl px-6 py-12"><h1 className="text-2xl font-semibold">Competition unavailable</h1><p className="mt-3 text-sm text-red-700">{competition.error instanceof Error ? competition.error.message : "The campaign could not be loaded."}</p></main>;
   const data = competition.data;
+  const eligibility = entryEligibilityFields(data.fields, data.allowedCountryCodes, data.minimumAge);
 
   if (entry && !entry.status.includes("VerificationPending"))
     return <main className="mx-auto max-w-2xl px-6 py-12"><CheckCircle2 className="text-emerald-700" size={34} /><h1 className="mt-5 text-3xl font-semibold">Entry received</h1><p className="mt-3">Reference <strong>{entry.entryReference}</strong></p><p className="mt-2 text-sm text-neutral-700">Status: {entry.status}</p></main>;
@@ -108,13 +110,30 @@ export function PublicEntryForm({ competitionSlug, tenantSlug }: { competitionSl
     {actions.length > 0 && <SocialActions actions={actions} connectedProvider={socialSession?.provider} pending={verifyAction.isPending} error={verifyAction.error} onVerify={id => verifyAction.mutate(id)} />}
 
     {(data.allowEmailEntry || socialSession) ? <form className="mt-6 grid gap-5" onSubmit={event => { event.preventDefault(); submit.mutate(); }}>
-      {data.fields.filter(field => field.fieldType !== "Hidden" && field.fieldType !== "Consent").map(field => <label className="field" key={field.id}><span>{field.label}{field.isRequired ? " *" : ""}</span>{field.fieldType === "Textarea" ? <textarea required={field.isRequired} value={values[field.fieldKey] ?? ""} onChange={event => setValues({ ...values, [field.fieldKey]: event.target.value })} /> : <input required={field.isRequired} type={field.fieldType === "Email" ? "email" : field.fieldType === "Phone" ? "tel" : field.fieldType === "Date" || field.fieldType === "DateOfBirth" ? "date" : "text"} value={values[field.fieldKey] ?? ""} onChange={event => setValues({ ...values, [field.fieldKey]: event.target.value })} />}{field.helpText && <small className="mt-1 block font-normal text-neutral-600">{field.helpText}</small>}</label>)}
-      <fieldset className="grid gap-3"><legend className="mb-2 font-semibold">Consent</legend>{data.consents.map(consent => <label className="flex items-start gap-3 text-sm" key={consent.id}><input className="mt-1" type="checkbox" required={consent.isRequired} checked={!!consents[consent.id]} onChange={event => setConsents({ ...consents, [consent.id]: event.target.checked })} /><span>{consent.text}{consent.isRequired ? " *" : ""}</span></label>)}</fieldset>
+      {data.fields.filter(field => field.fieldType !== "Hidden" && field.fieldType !== "Consent").map(field => {
+        const countryRequired = field.fieldKey === eligibility.countryKey && data.allowedCountryCodes.length > 0;
+        const birthDateRequired = field.fieldKey === eligibility.dateOfBirthKey && data.minimumAge != null;
+        const required = field.isRequired || countryRequired || birthDateRequired;
+        const inputType = field.fieldType === "Email" ? "email" : field.fieldType === "Phone" ? "tel" : field.fieldType === "Date" || field.fieldType === "DateOfBirth" || birthDateRequired ? "date" : "text";
+        return <label className="field" key={field.id}><span>{field.label}{required ? " *" : ""}</span>
+          {countryRequired ? <select required value={values[field.fieldKey] ?? ""} onChange={event => setValues({ ...values, [field.fieldKey]: event.target.value })}><option value="">Select your country</option>{data.allowedCountryCodes.map(country => <option key={country} value={country}>{countryName(country)}</option>)}</select>
+            : field.fieldType === "Textarea" ? <textarea required={required} value={values[field.fieldKey] ?? ""} onChange={event => setValues({ ...values, [field.fieldKey]: event.target.value })} />
+              : <input required={required} type={inputType} value={values[field.fieldKey] ?? ""} onChange={event => setValues({ ...values, [field.fieldKey]: event.target.value })} />}
+          {field.helpText && <small className="mt-1 block font-normal text-neutral-600">{field.helpText}</small>}</label>;
+      })}
+      {eligibility.addCountry && <label className="field"><span>Country of residence *</span><select required value={values[eligibility.countryKey] ?? ""} onChange={event => setValues({ ...values, [eligibility.countryKey]: event.target.value })}><option value="">Select your country</option>{data.allowedCountryCodes.map(country => <option key={country} value={country}>{countryName(country)}</option>)}</select></label>}
+      {eligibility.addDateOfBirth && <label className="field"><span>Date of birth *</span><input required type="date" value={values[eligibility.dateOfBirthKey] ?? ""} onChange={event => setValues({ ...values, [eligibility.dateOfBirthKey]: event.target.value })} /></label>}
+      {data.consents.length > 0 && <fieldset className="grid gap-3"><legend className="mb-2 font-semibold">Consent</legend>{data.consents.map(consent => <label className="flex items-start gap-3 text-sm" key={consent.id}><input className="mt-1" type="checkbox" required={consent.isRequired} checked={!!consents[consent.id]} onChange={event => setConsents({ ...consents, [consent.id]: event.target.checked })} /><span>{consent.text}{consent.isRequired ? " *" : ""}</span></label>)}</fieldset>}
       <Captcha onToken={onCaptcha} />
       {submit.error && <p className="border border-red-200 bg-red-50 p-3 text-sm text-red-700">{submit.error.message}</p>}
       <button className="command-button w-fit" disabled={!captchaToken || submit.isPending || missingRequiredAction}>{submit.isPending ? "Submitting" : "Submit entry"}</button>
     </form> : <p className="mt-6 border border-neutral-200 bg-neutral-50 p-4 text-sm">Connect one of the enabled accounts above to enter.</p>}
   </main>;
+}
+
+function countryName(code: string) {
+  try { return new Intl.DisplayNames(["en"], { type: "region" }).of(code.toUpperCase()) ?? code; }
+  catch { return code; }
 }
 
 function SocialActions({ actions, connectedProvider, pending, error, onVerify }: {
