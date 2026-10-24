@@ -22,7 +22,7 @@ export default function DomainsPage() {
       <div className="flex flex-wrap items-center gap-2"><Globe2 size={18} /><h2 className="break-all font-semibold">{platform.data.hostname}</h2><span className="status status-active">Platform managed</span></div>
       <div className="mt-3 flex flex-col items-start gap-2 text-sm">
         <a className="inline-flex max-w-full items-center gap-2 break-all text-primary underline" href={platform.data.platformUrl} target="_blank" rel="noopener noreferrer">{platform.data.platformUrl}<ExternalLink size={14} className="shrink-0" /></a>
-        <a className="inline-flex max-w-full items-center gap-2 break-all text-primary underline" href={platform.data.workspaceUrl} target="_blank" rel="noopener noreferrer">{platform.data.workspaceUrl}<ExternalLink size={14} className="shrink-0" /></a>
+        <div className="max-w-full"><span className="text-xs font-semibold uppercase text-muted">Campaign URL prefix</span><code className="mt-1 block break-all">{platform.data.workspaceUrl}/</code></div>
       </div>
     </section>}
     <form className="panel mb-5 grid gap-4 p-4 sm:grid-cols-[1fr_220px_auto] sm:items-end" onSubmit={event => { event.preventDefault(); create.mutate(); }}>
