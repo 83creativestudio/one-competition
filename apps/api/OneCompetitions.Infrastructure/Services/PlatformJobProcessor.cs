@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Configuration;
 using OneCompetitions.Application.Domains;
 using OneCompetitions.Application.Draws;
 using OneCompetitions.Application.Jobs;
@@ -15,6 +16,7 @@ using OneCompetitions.Domain.Notifications;
 using OneCompetitions.Domain.Tenants;
 using OneCompetitions.Domain.Winners;
 using OneCompetitions.Infrastructure.Persistence;
+using OneCompetitions.Infrastructure.Tenancy;
 
 namespace OneCompetitions.Infrastructure.Services;
 
@@ -29,7 +31,8 @@ public sealed class PlatformJobProcessor(
     IDrawCertificateService certificates,
     SecretProtector protector,
     IHttpClientFactory httpClientFactory,
-    ILogger<PlatformJobProcessor> logger) : IPlatformJobProcessor
+    ILogger<PlatformJobProcessor> logger,
+    IConfiguration configuration) : IPlatformJobProcessor
 {
     private static readonly TimeSpan Lease = TimeSpan.FromMinutes(5);
 
@@ -76,7 +79,8 @@ public sealed class PlatformJobProcessor(
                 && (x.Status == TenantDomainStatus.AwaitingDns || x.Status == TenantDomainStatus.DnsError || x.Status == TenantDomainStatus.Verifying
                     || x.Status == TenantDomainStatus.ProvisioningSsl || x.Status == TenantDomainStatus.SslError
                     || x.Status == TenantDomainStatus.Active)).Take(100).ToListAsync(cancellationToken))
-            .Where(x => (x.LastCheckedAt == null || x.LastCheckedAt < due)
+            .Where(x => !PlatformHostnames.IsReserved(x.Hostname, configuration)
+                && (x.LastCheckedAt == null || x.LastCheckedAt < due)
                 && (x.Status != TenantDomainStatus.Active || x.CertificateExpiresAt < DateTimeOffset.UtcNow.AddDays(30)))
             .Take(20).ToList();
         foreach (var domain in domains)

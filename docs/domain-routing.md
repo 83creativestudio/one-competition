@@ -7,3 +7,17 @@ Supported records are platform paths/subdomains and custom subdomain, root, or `
 Development verification accepts controlled local hostnames and cannot run outside Development/Testing. Production uses live TXT lookup and an idempotent Cloudflare Custom Hostnames provider that queries existing hostname/SSL state before provisioning. The worker retries pending/error domains and rechecks certificates approaching expiry.
 
 Nginx preserves `Host` and forwarded headers. Production accepts forwarded values only from explicitly configured proxy networks/addresses.
+
+## Reserved Platform Hosts
+
+`PLATFORM_BASE_DOMAIN`, the configured authentication/QR/verification hosts, and
+the platform subdomain namespace are system-managed. Customers cannot register
+them as custom domains. Shared platform hosts resolve through authenticated
+workspace selection or explicit `/c/{tenantSlug}` routes, not tenant-domain rows.
+A legacy erroneous tenant-domain row must not claim or disable these shared hosts.
+The worker excludes platform-owned names from customer DNS checks.
+
+Real customer custom domains still require Active status; unknown, unverified and
+suspended customer hosts are rejected even when a request carries valid credentials.
+Legacy conflicting rows should be disconnected with an audit event and retained
+for history, not marked verified merely to bypass the error.

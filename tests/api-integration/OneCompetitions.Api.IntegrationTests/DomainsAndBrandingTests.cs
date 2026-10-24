@@ -1,8 +1,14 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Net;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using OneCompetitions.Contracts.Auth;
 using OneCompetitions.Contracts.Branding;
 using OneCompetitions.Contracts.Domains;
+using OneCompetitions.Contracts.Tenants;
+using OneCompetitions.Domain.Tenants;
+using OneCompetitions.Infrastructure.Persistence;
 
 namespace OneCompetitions.Api.IntegrationTests;
 
@@ -92,6 +98,67 @@ public sealed class DomainsAndBrandingTests : IClassFixture<TestApplicationFacto
         Assert.NotNull(theme);
         Assert.Equal("one-digital", theme!.TenantSlug);
         Assert.Equal("ONE. Digital", theme.BrandName);
+    }
+
+    [Theory]
+    [InlineData("competitions.local")]
+    [InlineData("auth.competitions.local")]
+    [InlineData("other-tenant.competitions.local")]
+    public async Task Platform_owned_names_cannot_be_registered_as_customer_domains(string hostname)
+    {
+        await _factory.SeedAsync();
+        var client = await CreateTenantOwnerClientAsync();
+        client.DefaultRequestHeaders.Host = "one-digital.competitions.local";
+        var response = await client.PostAsJsonAsync("/api/domains", new CreateTenantDomainRequest(hostname, "CustomSubdomain"));
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("reserved", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Failed_legacy_customer_binding_cannot_disable_or_claim_the_shared_platform_host()
+    {
+        await _factory.SeedAsync();
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var tenant = await db.Tenants.SingleAsync(x => x.Slug == "one-digital");
+            db.TenantDomains.Add(new TenantDomain { Id = Guid.NewGuid(), TenantId = tenant.Id,
+                Hostname = "competitions.local", DomainType = TenantDomainType.CustomSubdomain,
+                Status = TenantDomainStatus.DnsError, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow });
+            await db.SaveChangesAsync();
+        }
+        var anonymous = _factory.CreateClient();
+        anonymous.DefaultRequestHeaders.Host = "competitions.local";
+        var theme = await anonymous.GetFromJsonAsync<PublicThemeResponse>("/c/omega-tv/api/public/theme");
+        Assert.Equal("omega-tv", theme!.TenantSlug);
+        var admin = _factory.CreateClient();
+        admin.DefaultRequestHeaders.Host = "competitions.local";
+        var login = await admin.PostAsJsonAsync("/api/auth/login", new LoginRequest("admin@onecompetitions.local", "DevelopmentOnly!ChangeMe123"));
+        login.EnsureSuccessStatusCode();
+        var auth = (await login.Content.ReadFromJsonAsync<AuthResponse>())!;
+        admin.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", auth.AccessToken);
+        admin.DefaultRequestHeaders.Add("X-One-Tenant", "omega-tv");
+        var selected = await admin.GetFromJsonAsync<TenantResponse>("/api/tenants/current");
+        Assert.Equal("omega-tv", selected!.Slug);
+    }
+
+    [Fact]
+    public async Task Inactive_real_custom_domain_still_rejects_authenticated_requests()
+    {
+        await _factory.SeedAsync();
+        var hostname = $"suspended-{Guid.NewGuid():N}.test";
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var tenant = await db.Tenants.SingleAsync(x => x.Slug == "one-digital");
+            db.TenantDomains.Add(new TenantDomain { Id = Guid.NewGuid(), TenantId = tenant.Id,
+                Hostname = hostname, DomainType = TenantDomainType.CustomSubdomain,
+                Status = TenantDomainStatus.Suspended, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow });
+            await db.SaveChangesAsync();
+        }
+        var client = await CreateTenantOwnerClientAsync();
+        client.DefaultRequestHeaders.Host = hostname;
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/tenants/current")).StatusCode);
     }
 
     private async Task<HttpClient> CreateTenantOwnerClientAsync()

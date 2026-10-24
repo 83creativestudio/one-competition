@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using OneCompetitions.Application.Auditing;
 using OneCompetitions.Application.Auth;
 using OneCompetitions.Application.Billing;
@@ -11,6 +12,7 @@ using OneCompetitions.Contracts.Domains;
 using OneCompetitions.Domain.Tenants;
 using OneCompetitions.Infrastructure.Identity;
 using OneCompetitions.Infrastructure.Persistence;
+using OneCompetitions.Infrastructure.Tenancy;
 
 namespace OneCompetitions.Infrastructure.Services;
 
@@ -21,7 +23,8 @@ public sealed class TenantDomainService(
     IDomainVerificationProvider verificationProvider,
     ISslProvisioningProvider sslProvisioningProvider,
     IPlanLimitService planLimits,
-    IAuditLogger auditLogger) : ITenantDomainService
+    IAuditLogger auditLogger,
+    IConfiguration configuration) : ITenantDomainService
 {
     private static readonly Regex HostnamePattern = new(
         @"^(?=.{1,253}$)(?!-)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$",
@@ -49,6 +52,9 @@ public sealed class TenantDomainService(
         {
             throw new InvalidOperationException("Hostname is not valid.");
         }
+
+        if (PlatformHostnames.IsReserved(hostname, configuration))
+            throw new InvalidOperationException("This hostname is reserved for the platform and cannot be assigned to a customer.");
 
         if (!Enum.TryParse<TenantDomainType>(request.DomainType, true, out var domainType))
         {

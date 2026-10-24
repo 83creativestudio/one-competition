@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using OneCompetitions.Application.Tenants;
 using OneCompetitions.Domain.Tenants;
 using OneCompetitions.Infrastructure.Persistence;
+using OneCompetitions.Infrastructure.Tenancy;
 using Serilog.Context;
 using System.Security.Claims;
 using OneCompetitions.Application.Auth;
@@ -26,8 +27,10 @@ public sealed class TenantResolutionMiddleware(RequestDelegate next)
         var hostname = context.Request.Host.Host.ToLowerInvariant();
         var baseDomain = (configuration["PLATFORM_BASE_DOMAIN"] ?? "competitions.local").ToLowerInvariant();
 
-        var tenant = await ResolveFromCustomDomainAsync(hostname, dbContext)
-            ?? await ResolveFromPlatformSubdomainAsync(hostname, baseDomain, dbContext);
+        // A legacy tenant-domain row must never claim or disable the shared control plane.
+        Tenant? tenant = PlatformHostnames.IsSharedHost(hostname, configuration) ? null
+            : await ResolveFromCustomDomainAsync(hostname, dbContext)
+                ?? await ResolveFromPlatformSubdomainAsync(hostname, baseDomain, dbContext);
 
         // A valid user/session cannot turn an unknown or inactive host into a trusted domain.
         if (tenant is null && ShouldRejectUnknownHost(context, hostname, baseDomain, configuration))
@@ -138,17 +141,7 @@ public sealed class TenantResolutionMiddleware(RequestDelegate next)
             return false;
         }
 
-        var platformHosts = new[] { "PLATFORM_AUTH_DOMAIN", "PLATFORM_QR_DOMAIN", "PLATFORM_VERIFY_DOMAIN" }
-            .Select(key => ConfigurationHost(configuration[key]))
-            .Where(value => value is not null);
         return !LocalHosts.Contains(hostname)
-            && !string.Equals(hostname, baseDomain, StringComparison.OrdinalIgnoreCase)
-            && !platformHosts.Contains(hostname, StringComparer.OrdinalIgnoreCase);
-    }
-
-    private static string? ConfigurationHost(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return null;
-        return Uri.TryCreate(value, UriKind.Absolute, out var uri) ? uri.IdnHost.ToLowerInvariant() : value.Trim().Trim('/').ToLowerInvariant();
+            && !PlatformHostnames.IsSharedHost(hostname, configuration);
     }
 }
